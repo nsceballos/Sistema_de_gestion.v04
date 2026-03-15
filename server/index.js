@@ -1,7 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { initializeSpreadsheet } from './sheets.js';
+import { fileURLToPath } from 'url';
+import { ensureInitialized } from './sheets.js';
 import authRoutes from './routes/auth.js';
 import guestsRoutes from './routes/guests.js';
 import expensesRoutes from './routes/expenses.js';
@@ -9,7 +10,6 @@ import expensesRoutes from './routes/expenses.js';
 dotenv.config({ path: new URL('../.env', import.meta.url).pathname });
 
 const app = express();
-const PORT = process.env.PORT || 3001;
 
 const allowedOrigins = [
   process.env.FRONTEND_URL || 'http://localhost:5173',
@@ -18,7 +18,7 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin || allowedOrigins.some(o => origin === o || origin.endsWith('.vercel.app'))) {
       callback(null, true);
     } else {
       callback(new Error('No permitido por CORS'));
@@ -28,6 +28,16 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// Asegurar inicialización de Google Sheets antes de cada request a la API
+app.use('/api', async (_req, res, next) => {
+  try {
+    await ensureInitialized();
+    next();
+  } catch (err) {
+    res.status(503).json({ message: 'Servicio no disponible: ' + err.message });
+  }
+});
 
 // API routes
 app.use('/api/auth', authRoutes);
@@ -39,21 +49,13 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Initialize Google Sheets and start server
-async function start() {
-  try {
-    console.log('Inicializando Google Sheets...');
-    await initializeSpreadsheet();
-    console.log('Google Sheets inicializado correctamente');
-  } catch (error) {
-    console.error('Error al inicializar Google Sheets:', error.message);
-    console.error('Verifica que GOOGLE_SPREADSHEET_ID y GOOGLE_SERVICE_ACCOUNT_JSON estén configurados');
-    process.exit(1);
-  }
+export default app;
 
+// Solo llamar a listen() cuando el archivo se ejecuta directamente (desarrollo local)
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const PORT = process.env.PORT || 3001;
+  console.log('Iniciando servidor local...');
   app.listen(PORT, () => {
     console.log(`Servidor escuchando en http://localhost:${PORT}`);
   });
 }
-
-start();

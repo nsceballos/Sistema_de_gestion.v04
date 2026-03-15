@@ -4,11 +4,30 @@ import dotenv from 'dotenv';
 
 dotenv.config({ path: new URL('../.env', import.meta.url).pathname });
 
-const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID;
-
 // Proxy agent compartido (se crea una sola vez)
 const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy;
 const proxyAgent = proxyUrl ? new HttpsProxyAgent(proxyUrl) : null;
+
+// Leer el ID del spreadsheet desde el entorno en tiempo de ejecución
+function getSpreadsheetId() {
+  const id = process.env.GOOGLE_SPREADSHEET_ID;
+  if (!id) throw new Error('GOOGLE_SPREADSHEET_ID no está configurado');
+  return id;
+}
+
+// Lazy initialization: se inicializa solo la primera vez que se necesita
+let initialized = false;
+let initPromise = null;
+
+export async function ensureInitialized() {
+  if (initialized) return;
+  if (!initPromise) {
+    initPromise = initializeSpreadsheet()
+      .then(() => { initialized = true; })
+      .catch(err => { initPromise = null; throw err; });
+  }
+  return initPromise;
+}
 
 export const SHEET_NAMES = {
   USERS: 'Usuarios',
@@ -51,10 +70,8 @@ async function getSheetsClient() {
  * Inicializa el spreadsheet creando las hojas y cabeceras si no existen
  */
 export async function initializeSpreadsheet() {
-  if (!SPREADSHEET_ID) {
-    throw new Error('GOOGLE_SPREADSHEET_ID no está configurado');
-  }
-  const sheets = getSheetsClient();
+  const SPREADSHEET_ID = getSpreadsheetId();
+  const sheets = await getSheetsClient();
 
   const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
   const existingSheets = spreadsheet.data.sheets?.map(s => s.properties?.title) || [];
@@ -98,7 +115,8 @@ export async function initializeSpreadsheet() {
  * Obtiene todas las filas de una hoja como array de objetos
  */
 export async function getRows(sheetName) {
-  const sheets = getSheetsClient();
+  const SPREADSHEET_ID = getSpreadsheetId();
+  const sheets = await getSheetsClient();
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
     range: `${sheetName}!A:Z`,
@@ -119,7 +137,8 @@ export async function getRows(sheetName) {
  * Agrega una nueva fila al final de una hoja
  */
 export async function appendRow(sheetName, data) {
-  const sheets = getSheetsClient();
+  const SPREADSHEET_ID = getSpreadsheetId();
+  const sheets = await getSheetsClient();
   const headers = SHEET_HEADERS[sheetName];
   const row = headers.map(header => (data[header] !== undefined ? String(data[header]) : ''));
   await sheets.spreadsheets.values.append({
@@ -134,7 +153,8 @@ export async function appendRow(sheetName, data) {
  * Actualiza una fila identificada por id
  */
 export async function updateRowById(sheetName, id, data) {
-  const sheets = getSheetsClient();
+  const SPREADSHEET_ID = getSpreadsheetId();
+  const sheets = await getSheetsClient();
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
     range: `${sheetName}!A:Z`,
@@ -167,7 +187,8 @@ export async function updateRowById(sheetName, id, data) {
  * Elimina una fila identificada por id
  */
 export async function deleteRowById(sheetName, id) {
-  const sheets = getSheetsClient();
+  const SPREADSHEET_ID = getSpreadsheetId();
+  const sheets = await getSheetsClient();
   const [dataResponse, spreadsheetResponse] = await Promise.all([
     sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
