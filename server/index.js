@@ -30,12 +30,29 @@ app.use(cors({
 app.use(express.json());
 
 // Asegurar inicialización de Google Sheets antes de cada request a la API
-app.use('/api', async (_req, res, next) => {
+// (excluye /api/health para que el health check funcione siempre)
+app.use('/api', async (req, res, next) => {
+  if (req.path === '/health') return next();
   try {
     await ensureInitialized();
     next();
   } catch (err) {
-    res.status(503).json({ message: 'Servicio no disponible: ' + err.message });
+    const isGooglePermissionsError = err.status === 403 || (err.message && err.message.includes('does not have permission'));
+    const isApiNotEnabled = err.message && err.message.includes('API has not been used');
+
+    let userMessage = 'Servicio no disponible: no se pudo conectar con Google Sheets.';
+    if (isGooglePermissionsError) {
+      userMessage = 'Error de permisos en Google Sheets: asegúrate de (1) habilitar la Google Sheets API en Google Cloud y (2) compartir el spreadsheet con el email de la cuenta de servicio como Editor.';
+    } else if (isApiNotEnabled) {
+      userMessage = 'La Google Sheets API no está habilitada. Habilitala en https://console.cloud.google.com/apis/library/sheets.googleapis.com';
+    } else if (!process.env.GOOGLE_SPREADSHEET_ID) {
+      userMessage = 'Variable de entorno GOOGLE_SPREADSHEET_ID no configurada.';
+    } else if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+      userMessage = 'Variable de entorno GOOGLE_SERVICE_ACCOUNT_JSON no configurada.';
+    }
+
+    console.error('Error al inicializar Google Sheets:', err.message);
+    res.status(503).json({ message: userMessage });
   }
 });
 
@@ -44,9 +61,15 @@ app.use('/api/auth', authRoutes);
 app.use('/api/guests', guestsRoutes);
 app.use('/api/expenses', expensesRoutes);
 
-// Health check
+// Health check — sin pasar por el middleware de inicialización de Sheets
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Manejo de errores global
+app.use((err, _req, res, _next) => {
+  console.error(err);
+  res.status(500).json({ message: 'Error interno del servidor' });
 });
 
 export default app;
