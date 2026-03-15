@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DollarSign, Calendar, Menu, X, Home } from 'lucide-react';
+import { DollarSign, Calendar, LayoutDashboard, LogOut, Home } from 'lucide-react';
 import ExpenseTracking from './components/ExpenseTracking';
 import Dashboard from './components/Dashboard';
 import ReservationManagement from './components/ReservationManagement';
@@ -8,12 +8,10 @@ import { authApi } from './lib/api';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [session, setSession] = useState<{ token: string; user: { id: string; email: string } } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Restore session from localStorage
     const existing = authApi.getSession();
     setSession(existing);
     setLoading(false);
@@ -41,108 +39,85 @@ function App() {
   }
 
   const navigation = [
-    { name: 'Panel', icon: DollarSign, tab: 'dashboard' },
+    { name: 'Panel', icon: LayoutDashboard, tab: 'dashboard' },
     { name: 'Reservas', icon: Calendar, tab: 'reservations' },
     { name: 'Gastos', icon: DollarSign, tab: 'expenses' },
   ];
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-lg">
+      {/* Header */}
+      <nav className="bg-white shadow-sm sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="flex justify-between h-16">
-            <div className="flex">
-              <div className="flex-shrink-0 flex items-center">
-                <Home className="h-8 w-8 text-indigo-600" />
-                <span className="ml-2 text-xl font-bold text-gray-900">Gestión Encantos</span>
-              </div>
-              <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-                {navigation.map((item) => (
-                  <button
-                    key={item.tab}
-                    onClick={() => setActiveTab(item.tab)}
-                    className={`${
-                      activeTab === item.tab
-                        ? 'border-indigo-500 text-gray-900'
-                        : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                    } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
-                  >
-                    <item.icon className="h-4 w-4 mr-2" />
-                    {item.name}
-                  </button>
-                ))}
-              </div>
+          <div className="flex justify-between items-center h-14 sm:h-16">
+            {/* Logo */}
+            <div className="flex items-center">
+              <Home className="h-6 w-6 sm:h-8 sm:w-8 text-indigo-600" />
+              <span className="ml-2 text-base sm:text-xl font-bold text-gray-900">Gestión Encantos</span>
             </div>
 
-            <div className="flex items-center sm:hidden">
-              <button
-                onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500"
-              >
-                {isMenuOpen ? (
-                  <X className="block h-6 w-6" />
-                ) : (
-                  <Menu className="block h-6 w-6" />
-                )}
-              </button>
-            </div>
-
-            <div className="hidden sm:flex sm:items-center">
-              <span className="text-sm text-gray-500 mr-4">{session.user.email}</span>
-              <button
-                onClick={handleSignOut}
-                className="ml-4 px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
-              >
-                Cerrar sesión
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div
-          className={`${isMenuOpen ? 'block' : 'hidden'} sm:hidden fixed inset-0 z-50 bg-gray-800 bg-opacity-75`}
-          onClick={() => setIsMenuOpen(false)}
-        >
-          <div
-            className="fixed inset-y-0 left-0 w-64 bg-white shadow-xl"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="pt-2 pb-3 space-y-1">
+            {/* Desktop navigation */}
+            <div className="hidden sm:flex sm:space-x-8">
               {navigation.map((item) => (
                 <button
                   key={item.tab}
-                  onClick={() => {
-                    setActiveTab(item.tab);
-                    setIsMenuOpen(false);
-                  }}
+                  onClick={() => setActiveTab(item.tab)}
                   className={`${
                     activeTab === item.tab
-                      ? 'bg-indigo-50 border-indigo-500 text-indigo-700'
-                      : 'border-transparent text-gray-500 hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700'
-                  } block pl-3 pr-4 py-2 border-l-4 text-base font-medium w-full text-left`}
+                      ? 'border-indigo-500 text-gray-900'
+                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                  } inline-flex items-center px-1 border-b-2 text-sm font-medium h-16`}
                 >
-                  <div className="flex items-center">
-                    <item.icon className="h-5 w-5 mr-3" />
-                    {item.name}
-                  </div>
+                  <item.icon className="h-4 w-4 mr-2" />
+                  {item.name}
                 </button>
               ))}
+            </div>
+
+            {/* Right side */}
+            <div className="flex items-center gap-3">
+              <span className="hidden sm:block text-sm text-gray-500 truncate max-w-[180px]">
+                {session.user.email}
+              </span>
               <button
                 onClick={handleSignOut}
-                className="block w-full text-left pl-3 pr-4 py-2 border-l-4 border-transparent text-base font-medium text-gray-500 hover:bg-gray-50 hover:border-gray-300 hover:text-gray-700"
+                title="Cerrar sesión"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
               >
-                Cerrar sesión
+                <LogOut className="h-4 w-4" />
+                <span className="hidden sm:inline">Cerrar sesión</span>
               </button>
             </div>
           </div>
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Main content — extra bottom padding on mobile for the tab bar */}
+      <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 sm:pb-8">
         {activeTab === 'dashboard' && <Dashboard />}
         {activeTab === 'reservations' && <ReservationManagement />}
         {activeTab === 'expenses' && <ExpenseTracking />}
       </main>
+
+      {/* Bottom tab bar — mobile only */}
+      <nav className="sm:hidden fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 z-40">
+        <div className="grid grid-cols-3 h-16">
+          {navigation.map((item) => (
+            <button
+              key={item.tab}
+              onClick={() => setActiveTab(item.tab)}
+              className={`flex flex-col items-center justify-center gap-0.5 transition-colors ${
+                activeTab === item.tab
+                  ? 'text-indigo-600'
+                  : 'text-gray-400 active:text-gray-600'
+              }`}
+            >
+              <item.icon className={`h-6 w-6 ${activeTab === item.tab ? 'stroke-[2.5px]' : ''}`} />
+              <span className="text-xs font-medium">{item.name}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
     </div>
   );
 }
