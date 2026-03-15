@@ -1,9 +1,14 @@
 import { google } from 'googleapis';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import dotenv from 'dotenv';
 
 dotenv.config({ path: new URL('../.env', import.meta.url).pathname });
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID;
+
+// Proxy agent compartido (se crea una sola vez)
+const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy;
+const proxyAgent = proxyUrl ? new HttpsProxyAgent(proxyUrl) : null;
 
 export const SHEET_NAMES = {
   USERS: 'Usuarios',
@@ -24,20 +29,22 @@ const SHEET_HEADERS = {
   [SHEET_NAMES.RESERVATIONS]: ['id', 'guest_id', 'status', 'notification_sent', 'created_at', 'updated_at'],
 };
 
-function getAuth() {
+async function getSheetsClient() {
   if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
     throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON no está configurado en las variables de entorno');
   }
   const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
-  return new google.auth.GoogleAuth({
+  const auth = new google.auth.GoogleAuth({
     credentials,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
-}
-
-function getSheetsClient() {
-  const auth = getAuth();
-  return google.sheets({ version: 'v4', auth });
+  // Obtener el cliente JWT real y configurar el proxy en su transporter
+  const authClient = await auth.getClient();
+  if (proxyAgent && authClient.transporter) {
+    authClient.transporter.defaults = { ...authClient.transporter.defaults, agent: proxyAgent };
+  }
+  // Pasar authClient directamente para que el proxy se use también en llamadas a la API
+  return google.sheets({ version: 'v4', auth: authClient });
 }
 
 /**
