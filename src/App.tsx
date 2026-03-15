@@ -4,43 +4,28 @@ import ExpenseTracking from './components/ExpenseTracking';
 import Dashboard from './components/Dashboard';
 import ReservationManagement from './components/ReservationManagement';
 import Auth from './components/Auth';
-import { supabase } from './lib/supabase';
+import { authApi } from './lib/api';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [session, setSession] = useState<any>(null);
+  const [session, setSession] = useState<{ token: string; user: { id: string; email: string } } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const initializeAuth = async () => {
-      try {
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
-        setSession(initialSession);
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-          setSession(session);
-        });
-
-        return () => {
-          subscription.unsubscribe();
-        };
-      } catch (error) {
-        console.error('Error initializing auth:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    initializeAuth();
+    // Restore session from localStorage
+    const existing = authApi.getSession();
+    setSession(existing);
+    setLoading(false);
   }, []);
 
-  const handleSignOut = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (error) {
-      console.error('Error signing out:', error);
-    }
+  const handleSignOut = () => {
+    authApi.signOut();
+    setSession(null);
+  };
+
+  const handleAuthSuccess = (newSession: { token: string; user: { id: string; email: string } }) => {
+    setSession(newSession);
   };
 
   if (loading) {
@@ -52,7 +37,7 @@ function App() {
   }
 
   if (!session) {
-    return <Auth />;
+    return <Auth onAuthSuccess={handleAuthSuccess} />;
   }
 
   const navigation = [
@@ -103,6 +88,7 @@ function App() {
             </div>
 
             <div className="hidden sm:flex sm:items-center">
+              <span className="text-sm text-gray-500 mr-4">{session.user.email}</span>
               <button
                 onClick={handleSignOut}
                 className="ml-4 px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
@@ -113,11 +99,11 @@ function App() {
           </div>
         </div>
 
-        <div 
+        <div
           className={`${isMenuOpen ? 'block' : 'hidden'} sm:hidden fixed inset-0 z-50 bg-gray-800 bg-opacity-75`}
           onClick={() => setIsMenuOpen(false)}
         >
-          <div 
+          <div
             className="fixed inset-y-0 left-0 w-64 bg-white shadow-xl"
             onClick={e => e.stopPropagation()}
           >

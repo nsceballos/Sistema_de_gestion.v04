@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { format, subMonths, startOfMonth, endOfMonth, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { supabase } from '../lib/supabase';
+import { guestsApi, expensesApi } from '../lib/api';
 
 interface MonthlyData {
   month: string;
@@ -11,12 +11,8 @@ interface MonthlyData {
   profit: number;
 }
 
-const formatNumber = (value: number): string => {
-  return value.toLocaleString('es-AR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-};
+const formatNumber = (value: number): string =>
+  value.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function Dashboard() {
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
@@ -31,55 +27,44 @@ export default function Dashboard() {
   const fetchMonthlyData = async () => {
     try {
       setError(null);
+      setLoading(true);
+
+      const [allGuests, allExpenses] = await Promise.all([
+        guestsApi.getAll(),
+        expensesApi.getAll(),
+      ]);
+
       const currentDate = new Date();
       const months = Array.from({ length: 12 }, (_, i) => subMonths(currentDate, i));
-      const monthlyDataArray: MonthlyData[] = [];
 
-      for (const month of months) {
-        const startDate = startOfMonth(month);
-        const endDate = endOfMonth(month);
+      const monthlyDataArray: MonthlyData[] = months.map(month => {
+        const start = startOfMonth(month);
+        const end = endOfMonth(month);
 
-        // Fetch income (guests)
-        const { data: incomeData, error: incomeError } = await supabase
-          .from('guests')
-          .select('total_amount_usd, total_amount_ars, check_in_date')
-          .gte('check_in_date', startDate.toISOString())
-          .lte('check_in_date', endDate.toISOString());
+        const totalIncome = allGuests
+          .filter(g => {
+            const d = parseISO(g.check_in_date);
+            return d >= start && d <= end;
+          })
+          .reduce((sum, g) => sum + (currency === 'USD' ? g.total_amount_usd : g.total_amount_ars), 0);
 
-        if (incomeError) {
-          console.error('Error fetching income data:', incomeError);
-          continue;
-        }
+        const totalExpenses = allExpenses
+          .filter(e => {
+            const d = parseISO(e.expense_date);
+            return d >= start && d <= end;
+          })
+          .reduce((sum, e) => sum + (currency === 'USD' ? e.amount_usd : e.amount_ars), 0);
 
-        // Fetch expenses
-        const { data: expenseData, error: expenseError } = await supabase
-          .from('expenses')
-          .select('amount_usd, amount_ars, expense_date')
-          .gte('expense_date', startDate.toISOString())
-          .lte('expense_date', endDate.toISOString());
-
-        if (expenseError) {
-          console.error('Error fetching expense data:', expenseError);
-          continue;
-        }
-
-        // Calculate totals based on selected currency
-        const totalIncome = incomeData?.reduce((sum, item) => 
-          sum + (currency === 'USD' ? (item.total_amount_usd || 0) : (item.total_amount_ars || 0)), 0) || 0;
-        const totalExpenses = expenseData?.reduce((sum, item) => 
-          sum + (currency === 'USD' ? (item.amount_usd || 0) : (item.amount_ars || 0)), 0) || 0;
-
-        monthlyDataArray.push({
+        return {
           month: format(month, 'MMMM yyyy', { locale: es }),
           income: totalIncome,
           expenses: totalExpenses,
-          profit: totalIncome - totalExpenses
-        });
-      }
+          profit: totalIncome - totalExpenses,
+        };
+      });
 
       setMonthlyData(monthlyDataArray.reverse());
-    } catch (error) {
-      console.error('Error al cargar datos mensuales:', error);
+    } catch {
       setError('Error al cargar los datos. Por favor, intente nuevamente más tarde.');
     } finally {
       setLoading(false);
@@ -98,14 +83,9 @@ export default function Dashboard() {
     return (
       <div className="bg-white shadow rounded-lg p-6">
         <div className="text-center py-12">
-          <div className="mb-4 text-red-600">
-            {error}
-          </div>
+          <div className="mb-4 text-red-600">{error}</div>
           <button
-            onClick={() => {
-              setLoading(true);
-              fetchMonthlyData();
-            }}
+            onClick={() => fetchMonthlyData()}
             className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
           >
             Reintentar
@@ -115,8 +95,8 @@ export default function Dashboard() {
     );
   }
 
-  const totalIncome = monthlyData.reduce((sum, month) => sum + month.income, 0);
-  const totalExpenses = monthlyData.reduce((sum, month) => sum + month.expenses, 0);
+  const totalIncome = monthlyData.reduce((sum, m) => sum + m.income, 0);
+  const totalExpenses = monthlyData.reduce((sum, m) => sum + m.expenses, 0);
   const totalProfit = totalIncome - totalExpenses;
 
   return (
@@ -132,7 +112,7 @@ export default function Dashboard() {
           <option value="ARS">ARS</option>
         </select>
       </div>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="bg-green-50 p-6 rounded-lg">
           <h3 className="text-lg font-medium text-green-900">Ingresos Totales</h3>
@@ -156,23 +136,12 @@ export default function Dashboard() {
 
       <div className="h-96">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart
-            data={monthlyData}
-            margin={{
-              top: 20,
-              right: 30,
-              left: 20,
-              bottom: 5,
-            }}
-          >
+          <BarChart data={monthlyData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="month" />
-            <YAxis tickFormatter={(value) => formatNumber(value)} />
-            <Tooltip 
-              formatter={(value: number) => [
-                formatNumber(value),
-                currency === 'USD' ? 'USD' : 'ARS'
-              ]}
+            <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+            <YAxis tickFormatter={(v) => formatNumber(v)} />
+            <Tooltip
+              formatter={(value: number) => [formatNumber(value), currency === 'USD' ? 'USD' : 'ARS']}
             />
             <Legend />
             <Bar dataKey="income" fill="#34D399" name="Ingresos" />
