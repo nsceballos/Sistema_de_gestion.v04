@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { supabase } from '../lib/supabase';
+import { authApi } from '../lib/api';
 import { LogIn, UserPlus } from 'lucide-react';
 
 interface AuthFormData {
@@ -8,7 +8,11 @@ interface AuthFormData {
   password: string;
 }
 
-export default function Auth() {
+interface AuthProps {
+  onAuthSuccess: (session: { token: string; user: { id: string; email: string } }) => void;
+}
+
+export default function Auth({ onAuthSuccess }: AuthProps) {
   const { register, handleSubmit, formState: { errors } } = useForm<AuthFormData>();
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -18,21 +22,12 @@ export default function Auth() {
     setLoading(true);
     setError(null);
     try {
-      if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: data.email,
-          password: data.password,
-        });
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.auth.signUp({
-          email: data.email,
-          password: data.password,
-        });
-        if (error) throw error;
-      }
-    } catch (error: any) {
-      setError(error.message);
+      const result = isLogin
+        ? await authApi.login(data.email, data.password)
+        : await authApi.register(data.email, data.password);
+      onAuthSuccess(result);
+    } catch (err: any) {
+      setError(err.message || 'Error al autenticarse');
     } finally {
       setLoading(false);
     }
@@ -47,6 +42,9 @@ export default function Auth() {
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
           {isLogin ? 'Iniciar sesión' : 'Crear cuenta'}
         </h2>
+        <p className="mt-2 text-center text-sm text-gray-600">
+          Gestión Encantos — Sistema de Alojamientos
+        </p>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
@@ -65,8 +63,8 @@ export default function Auth() {
                     required: 'El correo es requerido',
                     pattern: {
                       value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                      message: 'Correo electrónico inválido'
-                    }
+                      message: 'Correo electrónico inválido',
+                    },
                   })}
                   className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                 />
@@ -89,8 +87,8 @@ export default function Auth() {
                     required: 'La contraseña es requerida',
                     minLength: {
                       value: 6,
-                      message: 'La contraseña debe tener al menos 6 caracteres'
-                    }
+                      message: 'La contraseña debe tener al menos 6 caracteres',
+                    },
                   })}
                   className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                 />
@@ -110,15 +108,9 @@ export default function Auth() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? (
-                  'Procesando...'
-                ) : isLogin ? (
-                  'Iniciar sesión'
-                ) : (
-                  'Registrarse'
-                )}
+                {loading ? 'Procesando...' : isLogin ? 'Iniciar sesión' : 'Registrarse'}
               </button>
             </div>
           </form>
@@ -137,7 +129,7 @@ export default function Auth() {
 
             <div className="mt-6">
               <button
-                onClick={() => setIsLogin(!isLogin)}
+                onClick={() => { setIsLogin(!isLogin); setError(null); }}
                 className="w-full flex justify-center items-center px-4 py-2 border border-indigo-300 shadow-sm text-sm font-medium rounded-md text-indigo-700 bg-white hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               >
                 <UserPlus className="h-5 w-5 mr-2" />
