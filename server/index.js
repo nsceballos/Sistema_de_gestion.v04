@@ -6,6 +6,7 @@ import { ensureInitialized } from './sheets.js';
 import authRoutes from './routes/auth.js';
 import guestsRoutes from './routes/guests.js';
 import expensesRoutes from './routes/expenses.js';
+import calendarRoutes from './routes/calendar.js';
 
 dotenv.config({ path: new URL('../.env', import.meta.url).pathname });
 
@@ -60,6 +61,8 @@ app.use('/api', async (req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/guests', guestsRoutes);
 app.use('/api/expenses', expensesRoutes);
+// Calendar routes — /api/calendar/cabin/:id.ics is public (no Sheets init check needed)
+app.use('/api/calendar', calendarRoutes);
 
 // Health check — sin pasar por el middleware de inicialización de Sheets
 app.get('/api/health', (_req, res) => {

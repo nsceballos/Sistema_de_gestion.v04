@@ -34,6 +34,7 @@ export const SHEET_NAMES = {
   GUESTS: 'Huespedes',
   EXPENSES: 'Gastos',
   RESERVATIONS: 'Reservas',
+  CONFIG: 'Configuracion',
 };
 
 const SHEET_HEADERS = {
@@ -46,6 +47,7 @@ const SHEET_HEADERS = {
   ],
   [SHEET_NAMES.EXPENSES]: ['id', 'expense_date', 'category', 'amount_usd', 'amount_ars', 'description', 'created_at'],
   [SHEET_NAMES.RESERVATIONS]: ['id', 'guest_id', 'status', 'notification_sent', 'created_at', 'updated_at'],
+  [SHEET_NAMES.CONFIG]: ['key', 'value'],
 };
 
 async function getSheetsClient() {
@@ -235,4 +237,43 @@ export async function deleteRowById(sheetName, id) {
 export async function findRowByField(sheetName, field, value) {
   const rows = await getRows(sheetName);
   return rows.find(row => row[field] === value) || null;
+}
+
+/**
+ * Lee la configuración de calendarios externos desde la hoja Configuracion
+ */
+export async function getCalendarConfig() {
+  const rows = await getRows(SHEET_NAMES.CONFIG);
+  const config = { cabin1_airbnb: '', cabin1_booking: '', cabin2_airbnb: '', cabin2_booking: '' };
+  for (const row of rows) {
+    if (row.key in config) config[row.key] = row.value || '';
+  }
+  return config;
+}
+
+/**
+ * Guarda la configuración de calendarios externos en la hoja Configuracion
+ */
+export async function saveCalendarConfig(config) {
+  const SPREADSHEET_ID = getSpreadsheetId();
+  const sheets = await getSheetsClient();
+
+  // Limpiar filas de datos (mantener cabecera)
+  await sheets.spreadsheets.values.clear({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${SHEET_NAMES.CONFIG}!A2:B100`,
+  });
+
+  const rows = Object.entries(config)
+    .filter(([, v]) => v !== undefined && v !== null)
+    .map(([k, v]) => [k, String(v)]);
+
+  if (rows.length > 0) {
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${SHEET_NAMES.CONFIG}!A2`,
+      valueInputOption: 'RAW',
+      requestBody: { values: rows },
+    });
+  }
 }

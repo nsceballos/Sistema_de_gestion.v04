@@ -150,3 +150,30 @@ export const expensesApi = {
   delete: (id: string) =>
     request<{ message: string }>(`/expenses/${id}`, { method: 'DELETE' }),
 };
+
+// ── Calendar API ──────────────────────────────────────────────────────────
+
+export interface CalendarConfig {
+  cabin1_airbnb: string;
+  cabin1_booking: string;
+  cabin2_airbnb: string;
+  cabin2_booking: string;
+}
+
+export interface ExternalEvent {
+  id: string;
+  start: string;
+  end: string;
+  title: string;
+}
+
+export const calendarApi = {
+  getConfig: () => request<CalendarConfig>('/calendar/config'),
+  saveConfig: (config: CalendarConfig) =>
+    request<{ message: string }>('/calendar/config', {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    }),
+  getExternalEvents: (url: string) =>
+    request<ExternalEvent[]>(`/calendar/external?url=${encodeURIComponent(url)}`),
+};
