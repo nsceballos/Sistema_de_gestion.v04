@@ -47,6 +47,12 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     } catch {
       // ignore parse errors
     }
+    // Token expired or invalid → clear session so the login screen shows
+    if (res.status === 401) {
+      removeToken();
+      removeCurrentUser();
+      window.location.reload();
+    }
     throw new Error(msg);
   }
 
