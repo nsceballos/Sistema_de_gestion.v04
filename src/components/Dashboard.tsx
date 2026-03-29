@@ -86,7 +86,7 @@ export default function Dashboard() {
   const [nextReservation, setNextReservation] = useState<Guest | null>(null);
   const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<string[]>([]);
   const [currency, setCurrency] = useState<'USD' | 'ARS'>('USD');
 
   useEffect(() => {
@@ -94,14 +94,26 @@ export default function Dashboard() {
   }, [currency]);
 
   const fetchData = async () => {
-    try {
-      setError(null);
-      setLoading(true);
+    setErrors([]);
+    setLoading(true);
 
-      const [allGuests, allExpenses] = await Promise.all([
-        guestsApi.getAll(),
-        expensesApi.getAll(),
-      ]);
+    // Fetch independently so one failure doesn't block the other
+    const [guestsResult, expensesResult] = await Promise.allSettled([
+      guestsApi.getAll(),
+      expensesApi.getAll(),
+    ]);
+
+    const newErrors: string[] = [];
+    const allGuests: Guest[] = guestsResult.status === 'fulfilled'
+      ? guestsResult.value
+      : (newErrors.push('Reservas: ' + (guestsResult.reason as Error).message), []);
+    const allExpenses: Expense[] = expensesResult.status === 'fulfilled'
+      ? expensesResult.value
+      : (newErrors.push('Gastos: ' + (expensesResult.reason as Error).message), []);
+
+    setErrors(newErrors);
+
+    try {
 
       const today = todayStr();
 
@@ -179,8 +191,8 @@ export default function Dashboard() {
         .slice(0, 12);
 
       setRecentActivity(combined);
-    } catch {
-      setError('Error al cargar los datos. Por favor, intentá de nuevo.');
+    } catch (e) {
+      setErrors((prev) => [...prev, 'Error interno: ' + (e as Error).message]);
     } finally {
       setLoading(false);
     }
@@ -194,19 +206,21 @@ export default function Dashboard() {
     );
   }
 
-  if (error) {
-    return (
-      <div className="bg-white shadow rounded-xl p-6 text-center py-12">
-        <p className="text-red-600 mb-4">{error}</p>
-        <button
-          onClick={fetchData}
-          className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
-        >
-          Reintentar
-        </button>
-      </div>
-    );
-  }
+  // Show errors as a dismissible banner (partial data still renders below)
+  const errorBanner = errors.length > 0 && (
+    <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+      <p className="text-sm font-semibold text-red-700 mb-1">Error al cargar datos:</p>
+      {errors.map((e, i) => (
+        <p key={i} className="text-sm text-red-600">{e}</p>
+      ))}
+      <button
+        onClick={fetchData}
+        className="mt-3 px-4 py-1.5 bg-red-600 text-white text-sm rounded-md hover:bg-red-700"
+      >
+        Reintentar
+      </button>
+    </div>
+  );
 
   const totalIncome = monthlyData.reduce((s, m) => s + m.income, 0);
   const totalExpenses = monthlyData.reduce((s, m) => s + m.expenses, 0);
@@ -215,6 +229,8 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5">
+
+      {errorBanner}
 
       {/* ── Reservas en curso y próxima ── */}
       <section>
