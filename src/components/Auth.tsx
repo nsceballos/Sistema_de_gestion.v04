@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { authApi } from '../lib/api';
+import { errorMessage } from '../lib/format';
 import { LogIn, UserPlus } from 'lucide-react';
 
 interface AuthFormData {
@@ -26,8 +27,8 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
         ? await authApi.login(data.email, data.password)
         : await authApi.register(data.email, data.password);
       onAuthSuccess(result);
-    } catch (err: any) {
-      setError(err.message || 'Error al autenticarse');
+    } catch (err) {
+      setError(errorMessage(err, 'Error al autenticarse'));
     } finally {
       setLoading(false);
     }
