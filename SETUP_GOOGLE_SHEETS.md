@@ -61,8 +61,11 @@ GOOGLE_SPREADSHEET_ID=1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms
 # Contenido del JSON de la cuenta de servicio (en una sola línea)
 GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"mi-proyecto",...}
 
-# Secreto JWT (genera uno aleatorio largo)
-JWT_SECRET=mi_secreto_super_seguro_2024
+# Secreto JWT (obligatorio en producción): generá uno largo y aleatorio con `openssl rand -hex 32`
+JWT_SECRET=pegá_acá_el_valor_generado
+
+# Emails que pueden crear una cuenta (además de la primera). Separados por comas.
+ALLOWED_EMAILS=socio@ejemplo.com,otra.persona@ejemplo.com
 
 PORT=3001
 FRONTEND_URL=http://localhost:5173
@@ -73,9 +76,41 @@ FRONTEND_URL=http://localhost:5173
 cat tu-archivo-de-clave.json | tr -d '\n'
 ```
 
+### `JWT_SECRET` (obligatorio en producción)
+
+Es la clave con la que se firman las sesiones. En Vercel (o con `NODE_ENV=production`) el servidor
+**no permite iniciar sesión** si `JWT_SECRET` no está configurado o tiene un valor de ejemplo
+(como el de `.env.example`): responde un error que explica cómo configurarlo.
+En desarrollo local, si falta, se usa un secreto de prueba y se muestra un aviso en la consola.
+
+Para generarlo:
+```bash
+openssl rand -hex 32
+```
+
+Si lo cambiás, las sesiones abiertas dejan de valer y hay que volver a iniciar sesión.
+
+### `ALLOWED_EMAILS` (quién puede registrarse)
+
+- La **primera cuenta** se puede crear sin restricciones (cuando la hoja `Usuarios` todavía no tiene usuarios).
+- Después, sólo pueden registrarse los emails que estén en `ALLOWED_EMAILS`
+  (separados por comas; no importan las mayúsculas ni los espacios). Si está vacía, el registro queda cerrado.
+- Los usuarios que ya existen siempre pueden iniciar sesión.
+
+Para sumar a alguien: agregá su email a `ALLOWED_EMAILS`, volvé a desplegar, pedile que se registre
+y después podés sacarlo de la lista.
+
 ---
 
-## 6. Instalar dependencias y correr la aplicación
+## 6. Variables de entorno en Vercel
+
+En el proyecto de Vercel, andá a **Settings → Environment Variables** y cargá las mismas variables
+(`GOOGLE_SPREADSHEET_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON`, `JWT_SECRET` y, si hace falta, `ALLOWED_EMAILS`).
+Después de cambiarlas, volvé a desplegar (**Deployments → Redeploy**) para que se apliquen.
+
+---
+
+## 7. Instalar dependencias y correr la aplicación
 
 ```bash
 npm install
@@ -85,6 +120,12 @@ npm run dev
 Esto arrancará simultáneamente:
 - El servidor backend en `http://localhost:3001`
 - El frontend en `http://localhost:5173`
+
+Para correr los tests del servidor:
+
+```bash
+npm test
+```
 
 ---
 
@@ -99,11 +140,30 @@ La aplicación crea y gestiona automáticamente estas hojas:
 | **Gastos** | Registro de gastos operativos por categoría |
 | **Reservas** | Estado de las reservas vinculadas a huéspedes |
 
+### Columnas nuevas (se agregan solas)
+
+Cuando la app necesita columnas nuevas, las agrega **automáticamente** al arrancar, a la derecha de la
+última columna que ya tenga cabecera. No se mueven, renombran ni borran las columnas existentes, así que
+podés agregar columnas propias en la planilla (por ejemplo notas internas): la app las respeta y no las pisa.
+
+Columnas agregadas en esta versión:
+
+| Hoja | Columna | Contenido |
+|------|---------|-----------|
+| **Huespedes** | `guest_name` | Nombre del huésped |
+| **Huespedes** | `source` | Canal de la reserva: `Directo`, `Booking`, `Airbnb` o vacío |
+| **Huespedes** | `exchange_rate` | Pesos por dólar usados al calcular los montos en USD (0 = desconocido, reservas viejas) |
+| **Gastos** | `exchange_rate` | Pesos por dólar usados al calcular el monto en USD |
+
+**Importante:** la app identifica cada columna por el **nombre de su cabecera** (fila 1).
+No cambies el nombre de esas cabeceras ni borres la fila 1.
+
 ---
 
 ## Seguridad
 
 - Las contraseñas se almacenan con **bcrypt** (hash + salt), nunca en texto plano
-- Los tokens de sesión son **JWT** firmados con `JWT_SECRET` y expiran en 7 días
+- Los tokens de sesión son **JWT** firmados con `JWT_SECRET` y expiran en 7 días; cuando vencen, la app vuelve a la pantalla de inicio de sesión
+- El registro está cerrado salvo para la primera cuenta y los emails de `ALLOWED_EMAILS`
 - La cuenta de servicio solo tiene acceso a la hoja de cálculo específica compartida con ella
 - El `GOOGLE_SERVICE_ACCOUNT_JSON` **nunca debe exponerse al cliente** — solo vive en el servidor

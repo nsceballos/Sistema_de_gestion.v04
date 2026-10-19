@@ -66,8 +66,11 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Manejo de errores global
+// Manejo de errores global (Express necesita los 4 parámetros para reconocerlo)
 app.use((err, _req, res, _next) => {
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ message: 'El cuerpo de la solicitud no es un JSON válido' });
+  }
   console.error(err);
   res.status(500).json({ message: 'Error interno del servidor' });
 });
