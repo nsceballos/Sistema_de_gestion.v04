@@ -399,6 +399,20 @@ describe('sheetUtils', () => {
     assert.equal(result.startIndex, 2);
   });
 
+  test('mergeHeaders: no se adueña de columnas con datos pero sin cabecera', () => {
+    // Fila 1 con 3 cabeceras, pero hay notas escritas a mano en las columnas D y E (ancho 5)
+    const result = mergeHeaders(['id', 'a', 'b'], ['id', 'a', 'b', 'guest_name'], 5);
+    assert.equal(result.startIndex, 5);
+    assert.deepEqual(result.missing, ['guest_name']);
+    assert.deepEqual(result.headers, ['id', 'a', 'b', '', '', 'guest_name']);
+    // las columnas sin cabecera no mapean a ningún campo
+    assert.deepEqual(rowToObject(result.headers, ['1', 'x', 'y', 'nota', 'otra nota']), { id: '1', a: 'x', b: 'y', guest_name: '' });
+  });
+
+  test('mergeHeaders: el ancho de los datos no cambia nada si no faltan cabeceras', () => {
+    assert.deepEqual(mergeHeaders(['id', 'a'], ['id', 'a'], 4), { headers: ['id', 'a'], missing: [], startIndex: 2 });
+  });
+
   test('mergeHeaders: no duplica cabeceras requeridas repetidas', () => {
     assert.deepEqual(mergeHeaders(['id'], ['id', 'x', 'x']).missing, ['x']);
   });

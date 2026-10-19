@@ -34,7 +34,9 @@ export function headerKey(header) {
  * Combina la fila de cabeceras que ya tiene la hoja con las que necesita la app.
  *
  * - Nunca reordena, renombra, borra ni pisa celdas existentes (el usuario puede tener columnas propias).
- * - Las cabeceras que faltan se agregan DESPUÉS de la última celda no vacía de la fila 1.
+ * - Las cabeceras que faltan se agregan DESPUÉS de la última celda no vacía de la fila 1, y nunca
+ *   antes de `minStartIndex` (el ancho real de los datos): así no se adueña de columnas sin cabecera
+ *   donde el usuario anotó cosas a mano.
  * - Si la fila 1 está vacía, el resultado son todas las cabeceras requeridas desde la columna A.
  *
  * Devuelve:
@@ -42,7 +44,7 @@ export function headerKey(header) {
  *   missing    → cabeceras a escribir
  *   startIndex → índice (base 0) de la columna donde se escribe la primera cabecera faltante
  */
-export function mergeHeaders(existing, wanted) {
+export function mergeHeaders(existing, wanted, minStartIndex = 0) {
   const current = (existing || []).map(h => (h === undefined || h === null ? '' : String(h)));
 
   const present = new Set(current.map(headerKey).filter(Boolean));
@@ -56,10 +58,14 @@ export function mergeHeaders(existing, wanted) {
   current.forEach((h, i) => {
     if (h !== '') lastNonEmpty = i;
   });
-  const startIndex = lastNonEmpty + 1;
+  const startIndex = missing.length > 0 ? Math.max(lastNonEmpty + 1, minStartIndex) : lastNonEmpty + 1;
+
+  // Las columnas sin cabecera que quedan en el medio se completan con '' para mantener los índices
+  const kept = current.slice(0, startIndex);
+  while (kept.length < startIndex) kept.push('');
 
   return {
-    headers: current.slice(0, startIndex).concat(missing),
+    headers: kept.concat(missing),
     missing,
     startIndex,
   };

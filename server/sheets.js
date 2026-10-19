@@ -184,12 +184,13 @@ export async function initializeSpreadsheet() {
     }
   }
 
-  // 2. Leer la fila 1 de todas las hojas en una sola llamada
-  const headerResponse = await sheets.spreadsheets.values.batchGet({
+  // 2. Leer todas las hojas en una sola llamada (sólo en el arranque): la fila 1 da las cabeceras y
+  //    el resto, el ancho real de los datos (puede haber columnas con datos pero sin cabecera)
+  const sheetResponse = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: SPREADSHEET_ID,
-    ranges: sheetNames.map(name => `${quoteSheetName(name)}!1:1`),
+    ranges: sheetNames.map(name => quoteSheetName(name)),
   });
-  const valueRanges = headerResponse.data.valueRanges || [];
+  const valueRanges = sheetResponse.data.valueRanges || [];
 
   // 3. Calcular qué cabeceras faltan en cada hoja
   const writes = [];
@@ -197,8 +198,10 @@ export async function initializeSpreadsheet() {
   const mergedHeaders = new Map();
 
   sheetNames.forEach((name, i) => {
-    const existing = valueRanges[i]?.values?.[0] || [];
-    const { headers, missing, startIndex } = mergeHeaders(existing, SHEET_HEADERS[name]);
+    const rows = valueRanges[i]?.values || [];
+    const existing = rows[0] || [];
+    const dataWidth = rows.reduce((max, row) => Math.max(max, row.length), 0);
+    const { headers, missing, startIndex } = mergeHeaders(existing, SHEET_HEADERS[name], dataWidth);
     mergedHeaders.set(name, headers);
     if (missing.length === 0) return;
 
