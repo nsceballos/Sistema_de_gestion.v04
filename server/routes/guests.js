@@ -1,6 +1,14 @@
 import { Router } from 'express';
 import { SHEET_NAMES, getRows, appendRow, updateRowById, deleteRowById } from '../sheets.js';
 import { authenticateToken } from '../middleware/auth.js';
+import {
+  normalizeGuestInput,
+  omitAbsentFields,
+  GUEST_FIELDS_KEPT_IF_ABSENT,
+  findOverlap,
+  buildOverlapResponse,
+  computeBalances,
+} from '../validation.js';
 
 const router = Router();
 router.use(authenticateToken);
@@ -12,25 +20,6 @@ function sortByCheckIn(rows) {
     const dateB = new Date(b.check_in_date || 0);
     return dateB - dateA;
   });
-}
-
-function computeBalances(guest) {
-  const totalARS = parseFloat(guest.total_amount_ars) || 0;
-  const depositARS = parseFloat(guest.deposit_ars) || 0;
-  const totalUSD = parseFloat(guest.total_amount_usd) || 0;
-  const depositUSD = parseFloat(guest.deposit_usd) || 0;
-  return {
-    ...guest,
-    total_amount_ars: totalARS,
-    total_amount_usd: totalUSD,
-    deposit_ars: depositARS,
-    deposit_usd: depositUSD,
-    balance_ars: totalARS - depositARS,
-    balance_usd: totalUSD - depositUSD,
-    num_guests: parseInt(guest.num_guests) || 0,
-    num_nights: parseInt(guest.num_nights) || 0,
-    cabin_number: parseInt(guest.cabin_number) || 1,
-  };
 }
 
 // GET /api/guests
@@ -48,35 +37,21 @@ router.get('/', async (req, res) => {
 // POST /api/guests
 router.post('/', async (req, res) => {
   try {
-    const {
-      check_in_date, check_out_date, num_guests, phone_number,
-      num_nights, cabin_number, total_amount_usd, total_amount_ars,
-      deposit_usd, deposit_ars, comments
-    } = req.body;
+    const { error, value } = normalizeGuestInput(req.body);
+    if (error) return res.status(400).json({ message: error });
 
-    const totalARS = parseFloat(total_amount_ars) || 0;
-    const depositARS = parseFloat(deposit_ars) || 0;
-    const totalUSD = parseFloat(total_amount_usd) || 0;
-    const depositUSD = parseFloat(deposit_usd) || 0;
+    // Detectar reservas superpuestas en la misma cabaña
+    const existing = await getRows(SHEET_NAMES.GUESTS);
+    const conflict = findOverlap(value, existing);
+    if (conflict && req.body?.allow_overlap !== true) {
+      return res.status(409).json(buildOverlapResponse(conflict));
+    }
 
     const now = new Date().toISOString();
     const guestId = crypto.randomUUID();
-
     const newGuest = {
       id: guestId,
-      check_in_date,
-      check_out_date,
-      num_guests: parseInt(num_guests) || 1,
-      phone_number: phone_number || '',
-      num_nights: parseInt(num_nights) || 0,
-      cabin_number: parseInt(cabin_number) || 1,
-      total_amount_usd: totalUSD,
-      total_amount_ars: totalARS,
-      deposit_usd: depositUSD,
-      deposit_ars: depositARS,
-      balance_usd: totalUSD - depositUSD,
-      balance_ars: totalARS - depositARS,
-      comments: comments || '',
+      ...value,
       created_at: now,
       updated_at: now,
     };
@@ -105,39 +80,31 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const {
-      check_in_date, check_out_date, num_guests, phone_number,
-      num_nights, cabin_number, total_amount_usd, total_amount_ars,
-      deposit_usd, deposit_ars, comments
-    } = req.body;
+    const { error, value } = normalizeGuestInput(req.body);
+    if (error) return res.status(400).json({ message: error });
 
-    const totalARS = parseFloat(total_amount_ars) || 0;
-    const depositARS = parseFloat(deposit_ars) || 0;
-    const totalUSD = parseFloat(total_amount_usd) || 0;
-    const depositUSD = parseFloat(deposit_usd) || 0;
+    const existing = await getRows(SHEET_NAMES.GUESTS);
+    if (!existing.some(g => g.id === id)) {
+      return res.status(404).json({ message: 'Reserva no encontrada' });
+    }
 
-    const updated = {
-      check_in_date,
-      check_out_date,
-      num_guests: parseInt(num_guests) || 1,
-      phone_number: phone_number || '',
-      num_nights: parseInt(num_nights) || 0,
-      cabin_number: parseInt(cabin_number) || 1,
-      total_amount_usd: totalUSD,
-      total_amount_ars: totalARS,
-      deposit_usd: depositUSD,
-      deposit_ars: depositARS,
-      balance_usd: totalUSD - depositUSD,
-      balance_ars: totalARS - depositARS,
-      comments: comments || '',
+    // Detectar superposición con OTRAS reservas de la misma cabaña
+    const conflict = findOverlap(value, existing, { excludeId: id });
+    if (conflict && req.body?.allow_overlap !== true) {
+      return res.status(409).json(buildOverlapResponse(conflict));
+    }
+
+    // Si el cliente no manda nombre/canal/tipo de cambio, se conservan los valores guardados
+    const changes = {
+      ...omitAbsentFields(value, req.body, GUEST_FIELDS_KEPT_IF_ABSENT),
       updated_at: new Date().toISOString(),
     };
 
-    const success = await updateRowById(SHEET_NAMES.GUESTS, id, updated);
-    if (!success) {
+    const updated = await updateRowById(SHEET_NAMES.GUESTS, id, changes);
+    if (!updated) {
       return res.status(404).json({ message: 'Reserva no encontrada' });
     }
-    return res.json({ id, ...updated });
+    return res.json(computeBalances(updated));
   } catch (error) {
     console.error('Error al actualizar huésped:', error);
     return res.status(500).json({ message: 'Error al actualizar la reserva' });

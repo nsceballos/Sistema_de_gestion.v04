@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { authApi } from '../lib/api';
+import { errorMessage } from '../lib/format';
 import { LogIn, UserPlus } from 'lucide-react';
 
 interface AuthFormData {
@@ -10,9 +11,11 @@ interface AuthFormData {
 
 interface AuthProps {
   onAuthSuccess: (session: { token: string; user: { id: string; email: string } }) => void;
+  /** Se llegó al login porque el servidor rechazó el token guardado */
+  sessionExpired?: boolean;
 }
 
-export default function Auth({ onAuthSuccess }: AuthProps) {
+export default function Auth({ onAuthSuccess, sessionExpired = false }: AuthProps) {
   const { register, handleSubmit, formState: { errors } } = useForm<AuthFormData>();
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -26,8 +29,8 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
         ? await authApi.login(data.email, data.password)
         : await authApi.register(data.email, data.password);
       onAuthSuccess(result);
-    } catch (err: any) {
-      setError(err.message || 'Error al autenticarse');
+    } catch (err) {
+      setError(errorMessage(err, 'Error al autenticarse'));
     } finally {
       setLoading(false);
     }
@@ -97,6 +100,12 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
                 )}
               </div>
             </div>
+
+            {sessionExpired && !error && (
+              <div className="rounded-md bg-amber-50 p-4">
+                <div className="text-sm text-amber-800">Tu sesión venció. Iniciá sesión de nuevo.</div>
+              </div>
+            )}
 
             {error && (
               <div className="rounded-md bg-red-50 p-4">

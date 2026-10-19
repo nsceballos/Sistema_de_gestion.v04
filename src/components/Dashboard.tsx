@@ -1,18 +1,48 @@
-import React, { useEffect, useState } from 'react';
-import { format, subMonths, startOfMonth, endOfMonth, parseISO, differenceInDays } from 'date-fns';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  format, subMonths, addMonths, startOfMonth, getDaysInMonth, parseISO, differenceInCalendarDays,
+} from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-import { TrendingUp, TrendingDown, BedDouble, Clock, ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
+import { BedDouble, Clock, ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
 import { guestsApi, expensesApi, type Guest, type Expense } from '../lib/api';
+import { CABINS, getReservationStatus, getStatusLabel, todayISO } from '../lib/reservations';
+import { errorMessage, formatMoney } from '../lib/format';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-const fmt = (value: number) =>
-  value.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+const fmt = (value: number) => formatMoney(value, 0);
 
-const todayStr = () => format(new Date(), 'yyyy-MM-dd');
+/**
+ * Noches ocupadas de una cabaña dentro de un mes. Cada reserva ocupa las noches
+ * [entrada, salida): la noche de la salida no cuenta. Se recorta al mes y se
+ * trabaja sobre strings YYYY-MM-DD (sin `new Date('YYYY-MM-DD')`, que corre un día por UTC).
+ * Las noches se marcan por día, así que reservas superpuestas no se cuentan dos veces.
+ */
+function occupiedNights(
+  guests: Pick<Guest, 'cabin_number' | 'check_in_date' | 'check_out_date'>[],
+  cabin: number,
+  monthStart: string, // YYYY-MM-01
+  nextMonthStart: string, // YYYY-MM-01 del mes siguiente
+  daysInMonth: number,
+): number {
+  const occupied = new Array<boolean>(daysInMonth).fill(false);
+  for (const g of guests) {
+    if (g.cabin_number !== cabin) continue;
+    const checkIn = g.check_in_date.slice(0, 10);
+    const checkOut = g.check_out_date.slice(0, 10);
+    const start = checkIn > monthStart ? checkIn : monthStart;
+    const end = checkOut < nextMonthStart ? checkOut : nextMonthStart;
+    if (end <= start) continue;
+    // Índices de día dentro del mes (0 = día 1); `end` es exclusivo
+    const first = Number(start.slice(8, 10)) - 1;
+    const last = end === nextMonthStart ? daysInMonth : Number(end.slice(8, 10)) - 1;
+    for (let d = first; d < last; d++) occupied[d] = true;
+  }
+  return occupied.filter(Boolean).length;
+}
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -33,25 +63,48 @@ interface ActivityItem {
   amount_ars: number;
 }
 
+interface CabinOccupancy {
+  cabin: number;
+  nights: number;
+  percent: number;
+}
+
 // ─── Sub-components ────────────────────────────────────────────────────────
 
-function ReservationCard({ guest, label }: { guest: Guest; label: string }) {
-  const checkIn = parseISO(guest.check_in_date);
-  const checkOut = parseISO(guest.check_out_date);
-  const daysUntil = differenceInDays(checkIn, new Date());
+function ReservationCard({ guest, today }: { guest: Guest; today: string }) {
+  const checkIn = parseISO(guest.check_in_date.slice(0, 10));
+  const checkOut = parseISO(guest.check_out_date.slice(0, 10));
+  const status = getReservationStatus(guest, today);
+  const label = getStatusLabel(guest, today);
+  const daysUntil = differenceInCalendarDays(checkIn, parseISO(today));
+
+  const pillClass =
+    status === 'upcoming'
+      ? 'bg-blue-100 text-blue-700'
+      : label === 'Sale hoy'
+        ? 'bg-amber-100 text-amber-700'
+        : 'bg-green-100 text-green-700';
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-2">
       <div className="flex items-center justify-between">
-        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-          label === 'En curso'
-            ? 'bg-green-100 text-green-700'
-            : 'bg-blue-100 text-blue-700'
-        }`}>
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${pillClass}`}>
           {label}
         </span>
         <span className="text-sm font-bold text-gray-700">Cabaña {guest.cabin_number}</span>
       </div>
+      {(guest.guest_name || guest.source) && (
+        <div className="flex items-center gap-2 min-w-0">
+          {guest.guest_name && (
+            <span className="text-sm font-semibold text-gray-800 truncate">{guest.guest_name}</span>
+          )}
+          {guest.source && (
+            <span className="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+              {guest.source}
+            </span>
+          )}
+        </div>
+      )}
       <div className="flex items-center gap-2 text-sm text-gray-600">
         <BedDouble className="h-4 w-4 text-gray-400 shrink-0" />
         <span>
@@ -60,11 +113,13 @@ function ReservationCard({ guest, label }: { guest: Guest; label: string }) {
         </span>
       </div>
       <div className="flex items-center justify-between text-sm">
-        <span className="text-gray-500">{guest.num_guests} huéspedes · {guest.phone_number}</span>
-        {label !== 'En curso' && daysUntil > 0 && (
-          <span className="flex items-center gap-1 text-blue-600 text-xs">
+        <span className="text-gray-500">
+          {guest.num_guests} huéspedes{guest.phone_number ? ` · ${guest.phone_number}` : ''}
+        </span>
+        {status === 'upcoming' && daysUntil > 0 && (
+          <span className="flex items-center gap-1 text-blue-600 text-xs shrink-0">
             <Clock className="h-3.5 w-3.5" />
-            en {daysUntil} días
+            {daysUntil === 1 ? 'mañana' : `en ${daysUntil} días`}
           </span>
         )}
       </div>
@@ -81,19 +136,14 @@ function ReservationCard({ guest, label }: { guest: Guest; label: string }) {
 // ─── Main component ────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
-  const [currentReservations, setCurrentReservations] = useState<Guest[]>([]);
-  const [nextReservation, setNextReservation] = useState<Guest | null>(null);
-  const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
+  const [guests, setGuests] = useState<Guest[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<string[]>([]);
   const [currency, setCurrency] = useState<'USD' | 'ARS'>('USD');
 
-  useEffect(() => {
-    fetchData();
-  }, [currency]);
-
-  const fetchData = async () => {
+  // Se pide al servidor una sola vez al montar (y en "Reintentar"); cambiar USD/ARS no vuelve a pedir
+  const loadData = useCallback(async () => {
     setErrors([]);
     setLoading(true);
 
@@ -104,99 +154,102 @@ export default function Dashboard() {
     ]);
 
     const newErrors: string[] = [];
-    const allGuests: Guest[] = guestsResult.status === 'fulfilled'
-      ? guestsResult.value
-      : (newErrors.push('Reservas: ' + (guestsResult.reason as Error).message), []);
-    const allExpenses: Expense[] = expensesResult.status === 'fulfilled'
-      ? expensesResult.value
-      : (newErrors.push('Gastos: ' + (expensesResult.reason as Error).message), []);
+    if (guestsResult.status === 'fulfilled') {
+      setGuests(guestsResult.value);
+    } else {
+      newErrors.push('Reservas: ' + errorMessage(guestsResult.reason, 'error desconocido'));
+    }
+    if (expensesResult.status === 'fulfilled') {
+      setExpenses(expensesResult.value);
+    } else {
+      newErrors.push('Gastos: ' + errorMessage(expensesResult.reason, 'error desconocido'));
+    }
 
     setErrors(newErrors);
+    setLoading(false);
+  }, []);
 
-    try {
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
 
-      const today = todayStr();
+  // Fecha local de hoy: si la pestaña queda abierta de un día para otro, se recalcula al renderizar
+  const today = todayISO();
 
-      // ── Reservas en curso y próxima ──────────────────────────────────────
-      const ongoing = allGuests.filter(
-        (g) => g.check_in_date <= today && g.check_out_date >= today,
-      );
-      const upcoming = allGuests
-        .filter((g) => g.check_in_date > today)
-        .sort((a, b) => a.check_in_date.localeCompare(b.check_in_date));
+  // ── Reservas en curso y próxima ────────────────────────────────────────
+  const { ongoing, nextReservation } = useMemo(() => {
+    const ongoingGuests = guests
+      .filter((g) => getReservationStatus(g, today) === 'ongoing')
+      .sort((a, b) => a.cabin_number - b.cabin_number);
+    const upcoming = guests
+      .filter((g) => getReservationStatus(g, today) === 'upcoming')
+      .sort((a, b) => a.check_in_date.localeCompare(b.check_in_date));
+    return { ongoing: ongoingGuests, nextReservation: upcoming[0] ?? null };
+  }, [guests, today]);
 
-      setCurrentReservations(ongoing);
-      setNextReservation(upcoming[0] ?? null);
+  // ── Ocupación del mes actual por cabaña ────────────────────────────────
+  const occupancy = useMemo(() => {
+    const monthDate = startOfMonth(parseISO(today));
+    const monthStart = format(monthDate, 'yyyy-MM-dd');
+    const nextMonthStart = format(addMonths(monthDate, 1), 'yyyy-MM-dd');
+    const daysInMonth = getDaysInMonth(monthDate);
+    const cabins: CabinOccupancy[] = CABINS.map((cabin) => {
+      const nights = occupiedNights(guests, cabin, monthStart, nextMonthStart, daysInMonth);
+      return { cabin, nights, percent: Math.round((nights / daysInMonth) * 100) };
+    });
+    return { monthName: format(monthDate, 'MMMM', { locale: es }), daysInMonth, cabins };
+  }, [guests, today]);
 
-      // ── Datos mensuales (últimos 12 meses) ───────────────────────────────
-      const currentDate = new Date();
-      const months = Array.from({ length: 12 }, (_, i) => subMonths(currentDate, i));
+  // ── Datos mensuales (últimos 12 meses, del más antiguo al actual) ──────
+  const monthlyData = useMemo<MonthlyData[]>(() => {
+    const base = parseISO(today);
+    return Array.from({ length: 12 }, (_, i) => subMonths(base, 11 - i)).map((month) => {
+      const key = format(month, 'yyyy-MM');
 
-      const monthly: MonthlyData[] = months.map((month) => {
-        const start = startOfMonth(month);
-        const end = endOfMonth(month);
+      const income = guests
+        .filter((g) => g.check_in_date.slice(0, 7) === key)
+        .reduce((sum, g) => sum + (currency === 'USD' ? g.total_amount_usd : g.total_amount_ars), 0);
 
-        const income = allGuests
-          .filter((g) => {
-            const d = parseISO(g.check_in_date);
-            return d >= start && d <= end;
-          })
-          .reduce(
-            (sum, g) => sum + (currency === 'USD' ? g.total_amount_usd : g.total_amount_ars),
-            0,
-          );
+      const monthExpenses = expenses
+        .filter((e) => e.expense_date.slice(0, 7) === key)
+        .reduce((sum, e) => sum + (currency === 'USD' ? e.amount_usd : e.amount_ars), 0);
 
-        const expenses = allExpenses
-          .filter((e) => {
-            const d = parseISO(e.expense_date);
-            return d >= start && d <= end;
-          })
-          .reduce(
-            (sum, e) => sum + (currency === 'USD' ? e.amount_usd : e.amount_ars),
-            0,
-          );
+      return {
+        label: format(month, "MMM ''yy", { locale: es }),
+        fullLabel: format(month, 'MMMM yyyy', { locale: es }),
+        income,
+        expenses: monthExpenses,
+        profit: income - monthExpenses,
+      };
+    });
+  }, [guests, expenses, currency, today]);
 
-        return {
-          label: format(month, "MMM ''yy", { locale: es }),
-          fullLabel: format(month, 'MMMM yyyy', { locale: es }),
-          income,
-          expenses,
-          profit: income - expenses,
-        };
-      });
+  // ── Actividad reciente (últimos 12 movimientos) ────────────────────────
+  const recentActivity = useMemo<ActivityItem[]>(() => {
+    const incomeItems: ActivityItem[] = guests.map((g) => ({
+      id: `g-${g.id}`,
+      date: g.check_in_date,
+      type: 'ingreso',
+      description: `Cabaña ${g.cabin_number} · ${g.num_guests} huésp. · ${g.num_nights} noches`,
+      amount_usd: g.total_amount_usd,
+      amount_ars: g.total_amount_ars,
+    }));
 
-      setMonthlyData(monthly.reverse());
+    const expenseItems: ActivityItem[] = expenses.map((e) => ({
+      id: `e-${e.id}`,
+      date: e.expense_date,
+      type: 'gasto',
+      description: `${e.category}${e.description ? ' · ' + e.description : ''}`,
+      amount_usd: e.amount_usd,
+      amount_ars: e.amount_ars,
+    }));
 
-      // ── Actividad reciente (últimos 10 movimientos) ──────────────────────
-      const incomeItems: ActivityItem[] = allGuests.map((g) => ({
-        id: `g-${g.id}`,
-        date: g.check_in_date,
-        type: 'ingreso',
-        description: `Cabaña ${g.cabin_number} · ${g.num_guests} huésp. · ${g.num_nights} noches`,
-        amount_usd: g.total_amount_usd,
-        amount_ars: g.total_amount_ars,
-      }));
-
-      const expenseItems: ActivityItem[] = allExpenses.map((e) => ({
-        id: `e-${e.id}`,
-        date: e.expense_date,
-        type: 'gasto',
-        description: `${e.category}${e.description ? ' · ' + e.description : ''}`,
-        amount_usd: e.amount_usd,
-        amount_ars: e.amount_ars,
-      }));
-
-      const combined = [...incomeItems, ...expenseItems]
-        .sort((a, b) => b.date.localeCompare(a.date))
-        .slice(0, 12);
-
-      setRecentActivity(combined);
-    } catch (e) {
-      setErrors((prev) => [...prev, 'Error interno: ' + (e as Error).message]);
-    } finally {
-      setLoading(false);
-    }
-  };
+    // Sólo movimientos hasta hoy: las reservas futuras ya se ven en "Estado de reservas"
+    return [...incomeItems, ...expenseItems]
+      .filter((item) => item.date.slice(0, 10) <= today)
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 12);
+  }, [guests, expenses, today]);
 
   if (loading) {
     return (
@@ -206,7 +259,7 @@ export default function Dashboard() {
     );
   }
 
-  // Show errors as a dismissible banner (partial data still renders below)
+  // Show errors as a banner (partial data still renders below)
   const errorBanner = errors.length > 0 && (
     <div className="bg-red-50 border border-red-200 rounded-xl p-4">
       <p className="text-sm font-semibold text-red-700 mb-1">Error al cargar datos:</p>
@@ -214,7 +267,7 @@ export default function Dashboard() {
         <p key={i} className="text-sm text-red-600">{e}</p>
       ))}
       <button
-        onClick={fetchData}
+        onClick={() => void loadData()}
         className="mt-3 px-4 py-1.5 bg-red-600 text-white text-sm rounded-md hover:bg-red-700"
       >
         Reintentar
@@ -235,20 +288,48 @@ export default function Dashboard() {
       {/* ── Reservas en curso y próxima ── */}
       <section>
         <h2 className="text-base font-semibold text-gray-700 mb-3">Estado de reservas</h2>
-        {currentReservations.length === 0 && !nextReservation ? (
+        {ongoing.length === 0 && !nextReservation ? (
           <div className="bg-white border border-gray-200 rounded-xl p-5 text-center text-gray-400 text-sm">
             No hay reservas activas ni próximas
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {currentReservations.map((g) => (
-              <ReservationCard key={g.id} guest={g} label="En curso" />
+            {ongoing.map((g) => (
+              <ReservationCard key={g.id} guest={g} today={today} />
             ))}
             {nextReservation && (
-              <ReservationCard guest={nextReservation} label="Próxima" />
+              <ReservationCard guest={nextReservation} today={today} />
             )}
           </div>
         )}
+      </section>
+
+      {/* ── Ocupación del mes ── */}
+      <section className="bg-white shadow-sm rounded-xl p-4 sm:p-6">
+        <h2 className="text-base font-semibold text-gray-700 mb-4">Ocupación de {occupancy.monthName}</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {occupancy.cabins.map(({ cabin, nights, percent }) => (
+            <div key={cabin}>
+              <div className="flex items-baseline justify-between text-sm mb-1.5">
+                <span className="font-medium text-gray-700">Cabaña {cabin}</span>
+                <span className="text-gray-500">
+                  {nights} de {occupancy.daysInMonth} noches ·{' '}
+                  <span className="font-semibold text-gray-800">{percent}%</span>
+                </span>
+              </div>
+              <div
+                className="h-2.5 w-full rounded-full bg-gray-100 overflow-hidden"
+                role="progressbar"
+                aria-label={`Ocupación de la cabaña ${cabin}`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={percent}
+              >
+                <div className="h-full rounded-full bg-indigo-500" style={{ width: `${percent}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* ── Resumen financiero ── */}
@@ -343,12 +424,12 @@ export default function Dashboard() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-800 truncate">{item.description}</p>
                   <p className="text-xs text-gray-400">
-                    {format(parseISO(item.date), "d 'de' MMMM yyyy", { locale: es })}
+                    {format(parseISO(item.date.slice(0, 10)), "d 'de' MMMM yyyy", { locale: es })}
                   </p>
                 </div>
                 <div className="text-right shrink-0">
                   <p className={`text-sm font-semibold ${item.type === 'ingreso' ? 'text-green-600' : 'text-red-500'}`}>
-                    {item.type === 'ingreso' ? '+' : '-'}$
+                    {item.type === 'ingreso' ? '+' : '-'}{prefix}
                     {fmt(currency === 'USD' ? item.amount_usd : item.amount_ars)}
                   </p>
                   <p className="text-xs text-gray-400 uppercase">{currency}</p>

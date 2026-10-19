@@ -10,6 +10,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [session, setSession] = useState<{ token: string; user: { id: string; email: string } } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   useEffect(() => {
     const existing = authApi.getSession();
@@ -17,7 +18,10 @@ function App() {
     setLoading(false);
 
     // El cliente de la API avisa cuando el servidor rechaza el token (vencido o inválido)
-    const onExpired = () => setSession(null);
+    const onExpired = () => {
+      setSession(null);
+      setSessionExpired(true);
+    };
     window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
   }, []);
@@ -28,6 +32,7 @@ function App() {
   };
 
   const handleAuthSuccess = (newSession: { token: string; user: { id: string; email: string } }) => {
+    setSessionExpired(false);
     setSession(newSession);
   };
 
@@ -40,7 +45,7 @@ function App() {
   }
 
   if (!session) {
-    return <Auth onAuthSuccess={handleAuthSuccess} />;
+    return <Auth onAuthSuccess={handleAuthSuccess} sessionExpired={sessionExpired} />;
   }
 
   const navigation = [

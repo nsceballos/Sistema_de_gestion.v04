@@ -1,17 +1,15 @@
 import { Router } from 'express';
 import { SHEET_NAMES, getRows, appendRow, updateRowById, deleteRowById } from '../sheets.js';
 import { authenticateToken } from '../middleware/auth.js';
+import {
+  normalizeExpenseInput,
+  omitAbsentFields,
+  EXPENSE_FIELDS_KEPT_IF_ABSENT,
+  parseExpense,
+} from '../validation.js';
 
 const router = Router();
 router.use(authenticateToken);
-
-function parseExpense(row) {
-  return {
-    ...row,
-    amount_ars: parseFloat(row.amount_ars) || 0,
-    amount_usd: parseFloat(row.amount_usd) || 0,
-  };
-}
 
 // GET /api/expenses
 router.get('/', async (req, res) => {
@@ -30,15 +28,12 @@ router.get('/', async (req, res) => {
 // POST /api/expenses
 router.post('/', async (req, res) => {
   try {
-    const { expense_date, category, amount_usd, amount_ars, description } = req.body;
+    const { error, value } = normalizeExpenseInput(req.body);
+    if (error) return res.status(400).json({ message: error });
 
     const newExpense = {
       id: crypto.randomUUID(),
-      expense_date,
-      category: category || '',
-      amount_usd: parseFloat(amount_usd) || 0,
-      amount_ars: parseFloat(amount_ars) || 0,
-      description: description || '',
+      ...value,
       created_at: new Date().toISOString(),
     };
 
@@ -54,21 +49,17 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { expense_date, category, amount_usd, amount_ars, description } = req.body;
+    const { error, value } = normalizeExpenseInput(req.body);
+    if (error) return res.status(400).json({ message: error });
 
-    const updated = {
-      expense_date,
-      category: category || '',
-      amount_usd: parseFloat(amount_usd) || 0,
-      amount_ars: parseFloat(amount_ars) || 0,
-      description: description || '',
-    };
+    // Si el cliente no manda el tipo de cambio, se conserva el guardado
+    const changes = omitAbsentFields(value, req.body, EXPENSE_FIELDS_KEPT_IF_ABSENT);
 
-    const success = await updateRowById(SHEET_NAMES.EXPENSES, id, updated);
-    if (!success) {
+    const updated = await updateRowById(SHEET_NAMES.EXPENSES, id, changes);
+    if (!updated) {
       return res.status(404).json({ message: 'Gasto no encontrado' });
     }
-    return res.json({ id, ...updated });
+    return res.json(parseExpense(updated));
   } catch (error) {
     console.error('Error al actualizar gasto:', error);
     return res.status(500).json({ message: 'Error al actualizar el gasto' });
