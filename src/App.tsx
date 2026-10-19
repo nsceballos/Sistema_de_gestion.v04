@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { DollarSign, Calendar, LayoutDashboard, LogOut, Home } from 'lucide-react';
 import ExpenseTracking from './components/ExpenseTracking';
 import Dashboard from './components/Dashboard';
 import ReservationManagement from './components/ReservationManagement';
 import Auth from './components/Auth';
-import { authApi } from './lib/api';
+import { authApi, AUTH_EXPIRED_EVENT } from './lib/api';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -15,6 +15,11 @@ function App() {
     const existing = authApi.getSession();
     setSession(existing);
     setLoading(false);
+
+    // El cliente de la API avisa cuando el servidor rechaza el token (vencido o inválido)
+    const onExpired = () => setSession(null);
+    window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
   }, []);
 
   const handleSignOut = () => {
