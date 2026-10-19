@@ -202,7 +202,8 @@ export default function ReservationForm({ editing, saving, error, onSubmit, onCa
     setValue('exchangeRate', String(rate), { shouldDirty: true, shouldValidate: true });
   };
 
-  const hint = rateHint({ rateValue: rateNumber, recordRate, rate, status, fetchedAt });
+  const recordRateInferred = editing !== null && !(editing.exchange_rate > 0);
+  const hint = rateHint({ rateValue: rateNumber, recordRate, recordRateInferred, rate, status, fetchedAt });
   // Cotización actual que se puede aplicar con un clic (cuando el campo tiene otro valor)
   const offeredRate = rate !== null && status !== 'loading' && rateNumber !== rate ? rate : null;
 
@@ -446,6 +447,8 @@ interface RateHintInput {
   rateValue: number;
   /** Cotización con la que se guardó la reserva que se edita */
   recordRate: number | null;
+  /** La reserva no tenía cotización guardada: recordRate se estimó a partir de sus montos */
+  recordRateInferred: boolean;
   /** Cotización del hook (en vivo o la última guardada) */
   rate: number | null;
   status: ExchangeRateStatus;
@@ -453,11 +456,12 @@ interface RateHintInput {
 }
 
 /** Texto bajo el campo de tipo de cambio según de dónde salió el valor que muestra */
-function rateHint({ rateValue, recordRate, rate, status, fetchedAt }: RateHintInput): {
+function rateHint({ rateValue, recordRate, recordRateInferred, rate, status, fetchedAt }: RateHintInput): {
   text: string;
   warning: boolean;
 } {
   if (recordRate !== null && rateValue === recordRate) {
+    if (recordRateInferred) return { text: 'Cotización estimada a partir de los montos guardados.', warning: false };
     return { text: 'Cotización con la que se guardó esta reserva.', warning: false };
   }
   if (rate !== null && rateValue === rate) {

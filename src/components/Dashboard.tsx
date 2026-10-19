@@ -244,10 +244,12 @@ export default function Dashboard() {
       amount_ars: e.amount_ars,
     }));
 
+    // Sólo movimientos hasta hoy: las reservas futuras ya se ven en "Estado de reservas"
     return [...incomeItems, ...expenseItems]
+      .filter((item) => item.date.slice(0, 10) <= today)
       .sort((a, b) => b.date.localeCompare(a.date))
       .slice(0, 12);
-  }, [guests, expenses]);
+  }, [guests, expenses, today]);
 
   if (loading) {
     return (

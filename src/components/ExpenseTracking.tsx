@@ -255,9 +255,20 @@ export default function ExpenseTracking() {
   const amountValue = Number(watch('amountARS'));
   const rateValue = Number(watch('exchangeRate'));
   const usdPreview = amountValue > 0 && rateValue > 0 ? toUSD(amountValue, rateValue) : null;
-  const hint = editingStoredRate && rateValue === editingStoredRate
-    ? { text: 'Cotización con la que se guardó este gasto', className: 'text-gray-500' }
-    : rateHint(rateStatus, fetchedAt);
+  const editingRateInferred = editingExpense !== null && !(editingExpense.exchange_rate > 0);
+  let hint: { text: string; className: string };
+  if (editingStoredRate && rateValue === editingStoredRate) {
+    hint = {
+      text: editingRateInferred
+        ? 'Cotización estimada a partir de los montos guardados'
+        : 'Cotización con la que se guardó este gasto',
+      className: 'text-gray-500',
+    };
+  } else if (rateValue > 0 && rateValue !== liveRate && rateStatus !== 'loading') {
+    hint = { text: 'Cotización ingresada a mano', className: 'text-gray-500' };
+  } else {
+    hint = rateHint(rateStatus, fetchedAt);
+  }
 
   return (
     <div className="bg-white shadow rounded-lg p-4 sm:p-6">
