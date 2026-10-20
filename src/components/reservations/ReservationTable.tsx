@@ -70,7 +70,7 @@ export default function ReservationTable({ guests, today, busy, onEdit, onDelete
                   <StatusPill status={status} label={getStatusLabel(guest, today)} />
                 </td>
                 <td className="px-2 py-3 xl:px-3">
-                  <div className="max-w-[11rem] truncate" title={name || undefined}>
+                  <div className="max-w-[9.5rem] truncate" title={name || undefined}>
                     {name || '—'}
                   </div>
                   {phone && <div className={`text-xs ${style.subtext}`}>{phone}</div>}

@@ -54,7 +54,13 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     ...options.headers,
   };
 
-  const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+  } catch {
+    // fetch sólo falla así cuando no hay red o el servidor no responde ("Failed to fetch")
+    throw new ApiError('No se pudo conectar con el servidor. Revisá tu conexión e intentá de nuevo.', 0);
+  }
 
   if (!res.ok) {
     let body: Record<string, unknown> = {};
