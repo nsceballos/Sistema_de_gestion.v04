@@ -13,10 +13,11 @@ interface Props {
   busy: boolean;
   onEdit: (guest: Guest) => void;
   onDelete: (id: string) => void;
+  onCreateReceipt?: (guest: Guest) => void;
 }
 
 /** Listado para celular (debajo de md): una tarjeta por reserva con los mismos colores que la tabla */
-export default function ReservationCards({ guests, today, busy, onEdit, onDelete }: Props) {
+export default function ReservationCards({ guests, today, busy, onEdit, onDelete, onCreateReceipt }: Props) {
   return (
     <ul className="space-y-3 md:hidden">
       {guests.map((guest) => {
@@ -41,7 +42,14 @@ export default function ReservationCards({ guests, today, busy, onEdit, onDelete
                 {phone && <p className={`text-xs ${style.subtext}`}>{phone}</p>}
               </div>
               <div className="-mr-1 -mt-1 shrink-0">
-                <RowActions guest={guest} disabled={busy} onEdit={onEdit} onDelete={onDelete} large />
+                <RowActions
+                  guest={guest}
+                  disabled={busy}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  onCreateReceipt={onCreateReceipt}
+                  large
+                />
               </div>
             </div>
 

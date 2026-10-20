@@ -321,6 +321,170 @@ export function parseExpense(row) {
   };
 }
 
+// ── Recibos ─────────────────────────────────────────────────────────────────
+
+// Número con el que arranca la numeración mientras no haya ningún recibo cargado: cuando se armó
+// esta sección, el dueño estaba en el N° 0053. Se puede cambiar con RECEIPT_START_NUMBER.
+export const FIRST_RECEIPT_NUMBER = 53;
+
+/** Primer número de recibo: RECEIPT_START_NUMBER si es un entero positivo; si no, FIRST_RECEIPT_NUMBER. */
+export function getReceiptStartNumber(raw = process.env.RECEIPT_START_NUMBER) {
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value >= 1 ? value : FIRST_RECEIPT_NUMBER;
+}
+
+/**
+ * Número de recibo (entero ≥ 1) a partir de un number o de un string de dígitos ('0053' → 53).
+ * Cualquier otra cosa (0, negativos, decimales, '12abc', null) → NaN.
+ */
+export function toReceiptNumber(raw) {
+  let value = NaN;
+  if (typeof raw === 'number') {
+    value = raw;
+  } else if (typeof raw === 'string' && /^\d+$/.test(raw.trim())) {
+    value = Number(raw.trim());
+  }
+  return Number.isSafeInteger(value) && value >= 1 ? value : NaN;
+}
+
+/** 53 → '0053' (como figura en el recibo; los números de más de 4 dígitos no se recortan). */
+export function formatReceiptNumber(number) {
+  return String(number).padStart(4, '0');
+}
+
+/**
+ * Valida y normaliza el cuerpo de POST/PUT /api/receipts. Devuelve { value } o { error }.
+ * `number` es opcional (salvo con `requireNumber`): si no viene, no forma parte del resultado,
+ * para que la ruta asigne el próximo número (POST) o conserve el que ya tiene el recibo (PUT).
+ */
+export function normalizeReceiptInput(body, { requireNumber = false } = {}) {
+  const input = body && typeof body === 'object' ? body : {};
+
+  const receiptDate = toText(input.receipt_date);
+  if (!isValidDateString(receiptDate)) {
+    return { error: 'La fecha del recibo no es válida (tiene que ser una fecha real con formato AAAA-MM-DD).' };
+  }
+
+  const guestName = toText(input.guest_name);
+  if (!guestName) {
+    return { error: 'El nombre del huésped es obligatorio.' };
+  }
+
+  const amount = toNumberStrict(input.amount_ars);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { error: 'El monto del recibo tiene que ser un número mayor a 0.' };
+  }
+
+  const concept = toText(input.concept);
+  if (!concept) {
+    return { error: 'El concepto del recibo es obligatorio.' };
+  }
+
+  let number;
+  if (isBlank(input.number)) {
+    if (requireNumber) return { error: 'El número de recibo es obligatorio.' };
+  } else {
+    number = toReceiptNumber(input.number);
+    if (Number.isNaN(number)) {
+      return { error: 'El número de recibo tiene que ser un número entero mayor o igual a 1.' };
+    }
+  }
+
+  if (!isBlank(input.guest_id) && typeof input.guest_id !== 'string') {
+    return { error: 'La reserva vinculada al recibo no es válida.' };
+  }
+
+  return {
+    value: {
+      ...(number === undefined ? {} : { number }),
+      receipt_date: receiptDate,
+      guest_name: guestName,
+      amount_ars: amount,
+      concept,
+      detail: toText(input.detail),
+      holder_name: toText(input.holder_name),
+      holder_phone: toText(input.holder_phone),
+      holder_address: toText(input.holder_address),
+      guest_id: toText(input.guest_id),
+    },
+  };
+}
+
+/** Normaliza una fila de la hoja Recibos al formato que devuelve la API (número entero, textos '' si faltan). */
+export function parseReceipt(row) {
+  const number = toReceiptNumber(row.number);
+  return {
+    ...row,
+    id: toText(row.id),
+    number: Number.isNaN(number) ? 0 : number,
+    receipt_date: toText(row.receipt_date),
+    guest_name: toText(row.guest_name),
+    amount_ars: parseFloat(row.amount_ars) || 0,
+    concept: toText(row.concept),
+    detail: toText(row.detail),
+    holder_name: toText(row.holder_name),
+    holder_phone: toText(row.holder_phone),
+    holder_address: toText(row.holder_address),
+    guest_id: toText(row.guest_id),
+    created_at: toText(row.created_at),
+    updated_at: toText(row.updated_at),
+  };
+}
+
+/** Del número más alto al más bajo (los recibos sin número válido quedan al final). Devuelve una copia. */
+export function sortReceipts(receipts) {
+  const numberOf = receipt => {
+    const number = toReceiptNumber(receipt.number);
+    return Number.isNaN(number) ? 0 : number;
+  };
+  return [...(receipts || [])].sort(
+    (a, b) => numberOf(b) - numberOf(a) || String(b.created_at ?? '').localeCompare(String(a.created_at ?? ''))
+  );
+}
+
+/** El recibo con el número más alto (ignora los que no tienen un número válido); null si no hay ninguno. */
+export function findLatestReceipt(receipts) {
+  let latest = null;
+  let max = 0;
+  for (const receipt of receipts || []) {
+    const number = toReceiptNumber(receipt?.number);
+    if (number > max) {
+      max = number;
+      latest = receipt;
+    }
+  }
+  return latest;
+}
+
+/** Próximo número de recibo: el más alto + 1, o `start` si todavía no hay ninguno válido. */
+export function nextReceiptNumber(receipts, start = FIRST_RECEIPT_NUMBER) {
+  const latest = findLatestReceipt(receipts);
+  return latest ? toReceiptNumber(latest.number) + 1 : start;
+}
+
+/**
+ * Primer recibo (en el orden de la hoja) con ese número. `excludeId` permite ignorar el propio
+ * recibo al editarlo. Sirve tanto para detectar un número repetido antes de guardar como para decidir,
+ * después de guardar, quién se queda con el número si dos pedidos lo tomaron a la vez: gana la fila
+ * que quedó primero en la hoja (el orden real en que Google Sheets procesó los pedidos), así los dos
+ * pedidos llegan a la misma conclusión aunque sus created_at no coincidan con ese orden.
+ */
+export function findReceiptByNumber(receipts, number, { excludeId } = {}) {
+  return (
+    (receipts || []).find(
+      r => r && (excludeId === undefined || r.id !== excludeId) && toReceiptNumber(r.number) === number
+    ) || null
+  );
+}
+
+/** Cuerpo de la respuesta 409 para un número de recibo repetido. */
+export function buildDuplicateReceiptResponse(number) {
+  return {
+    message: `Ya existe el recibo N° ${formatReceiptNumber(number)}.`,
+    code: 'DUPLICATE_NUMBER',
+  };
+}
+
 // ── Registro de usuarios ────────────────────────────────────────────────────
 
 export function normalizeEmail(email) {

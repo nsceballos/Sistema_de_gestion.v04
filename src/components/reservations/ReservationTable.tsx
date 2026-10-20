@@ -13,6 +13,7 @@ interface Props {
   busy: boolean;
   onEdit: (guest: Guest) => void;
   onDelete: (id: string) => void;
+  onCreateReceipt?: (guest: Guest) => void;
 }
 
 const HEADERS: { label: string; title?: string; align?: 'right' | 'center'; sticky?: boolean }[] = [
@@ -35,7 +36,7 @@ const ALIGN = { right: 'text-right', center: 'text-center' } as const;
 const STICKY_END = 'sticky right-0 z-10';
 
 /** Listado de escritorio (md en adelante): una fila por reserva, coloreada según su estado */
-export default function ReservationTable({ guests, today, busy, onEdit, onDelete }: Props) {
+export default function ReservationTable({ guests, today, busy, onEdit, onDelete, onCreateReceipt }: Props) {
   return (
     <div className="hidden overflow-x-auto md:block">
       <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -69,7 +70,7 @@ export default function ReservationTable({ guests, today, busy, onEdit, onDelete
                   <StatusPill status={status} label={getStatusLabel(guest, today)} />
                 </td>
                 <td className="px-2 py-3 xl:px-3">
-                  <div className="max-w-[11rem] truncate" title={name || undefined}>
+                  <div className="max-w-[9.5rem] truncate" title={name || undefined}>
                     {name || '—'}
                   </div>
                   {phone && <div className={`text-xs ${style.subtext}`}>{phone}</div>}
@@ -91,7 +92,13 @@ export default function ReservationTable({ guests, today, busy, onEdit, onDelete
                   {formatArs(guest.balance_ars)}
                 </td>
                 <td className={`whitespace-nowrap px-2 py-2 text-right xl:px-3 bg-inherit ${STICKY_END}`}>
-                  <RowActions guest={guest} disabled={busy} onEdit={onEdit} onDelete={onDelete} />
+                  <RowActions
+                    guest={guest}
+                    disabled={busy}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                    onCreateReceipt={onCreateReceipt}
+                  />
                 </td>
               </tr>
             );

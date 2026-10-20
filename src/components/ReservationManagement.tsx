@@ -10,7 +10,12 @@ import ReservationForm from './reservations/ReservationForm';
 import ReservationTable from './reservations/ReservationTable';
 import type { ReservationFilter } from './reservations/statusStyles';
 
-export default function ReservationManagement() {
+interface Props {
+  /** Abre la pantalla de recibos con esta reserva elegida */
+  onCreateReceipt?: (guest: Guest) => void;
+}
+
+export default function ReservationManagement({ onCreateReceipt }: Props) {
   const [guests, setGuests] = useState<Guest[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -198,6 +203,7 @@ export default function ReservationManagement() {
                 busy={deleteInProgress}
                 onEdit={openForm}
                 onDelete={handleDelete}
+                onCreateReceipt={onCreateReceipt}
               />
               <ReservationCards
                 guests={visibleGuests}
@@ -205,6 +211,7 @@ export default function ReservationManagement() {
                 busy={deleteInProgress}
                 onEdit={openForm}
                 onDelete={handleDelete}
+                onCreateReceipt={onCreateReceipt}
               />
             </>
           )}

@@ -1,16 +1,19 @@
-import { useState, useEffect } from 'react';
-import { DollarSign, Calendar, LayoutDashboard, LogOut, Home } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { DollarSign, Calendar, LayoutDashboard, LogOut, Home, Receipt } from 'lucide-react';
 import ExpenseTracking from './components/ExpenseTracking';
 import Dashboard from './components/Dashboard';
 import ReservationManagement from './components/ReservationManagement';
+import ReceiptManagement from './components/ReceiptManagement';
 import Auth from './components/Auth';
-import { authApi, AUTH_EXPIRED_EVENT } from './lib/api';
+import { authApi, AUTH_EXPIRED_EVENT, type Guest } from './lib/api';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [session, setSession] = useState<{ token: string; user: { id: string; email: string } } | null>(null);
   const [loading, setLoading] = useState(true);
   const [sessionExpired, setSessionExpired] = useState(false);
+  /** Reserva desde la que se pidió "Generar recibo"; la pantalla de recibos la usa una sola vez */
+  const [receiptGuest, setReceiptGuest] = useState<Guest | null>(null);
 
   useEffect(() => {
     const existing = authApi.getSession();
@@ -30,6 +33,13 @@ function App() {
     authApi.signOut();
     setSession(null);
   };
+
+  const handleCreateReceipt = (guest: Guest) => {
+    setReceiptGuest(guest);
+    setActiveTab('receipts');
+  };
+
+  const handleReceiptGuestConsumed = useCallback(() => setReceiptGuest(null), []);
 
   const handleAuthSuccess = (newSession: { token: string; user: { id: string; email: string } }) => {
     setSessionExpired(false);
@@ -52,6 +62,7 @@ function App() {
     { name: 'Panel', icon: LayoutDashboard, tab: 'dashboard' },
     { name: 'Reservas', icon: Calendar, tab: 'reservations' },
     { name: 'Gastos', icon: DollarSign, tab: 'expenses' },
+    { name: 'Recibos', icon: Receipt, tab: 'receipts' },
   ];
 
   return (
@@ -63,11 +74,11 @@ function App() {
             {/* Logo */}
             <div className="flex items-center">
               <Home className="h-6 w-6 sm:h-8 sm:w-8 text-indigo-600" />
-              <span className="ml-2 text-base sm:text-xl font-bold text-gray-900">Gestión Encantos</span>
+              <span className="ml-2 text-base sm:text-xl font-bold text-gray-900 whitespace-nowrap">Gestión Encantos</span>
             </div>
 
             {/* Desktop navigation */}
-            <div className="hidden sm:flex sm:space-x-8">
+            <div className="hidden md:flex md:space-x-8">
               {navigation.map((item) => (
                 <button
                   key={item.tab}
@@ -86,13 +97,13 @@ function App() {
 
             {/* Right side */}
             <div className="flex items-center gap-3">
-              <span className="hidden sm:block text-sm text-gray-500 truncate max-w-[180px]">
+              <span className="hidden lg:block text-sm text-gray-500 truncate max-w-[180px]">
                 {session.user.email}
               </span>
               <button
                 onClick={handleSignOut}
                 title="Cerrar sesión"
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium whitespace-nowrap rounded-md text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
               >
                 <LogOut className="h-4 w-4" />
                 <span className="hidden sm:inline">Cerrar sesión</span>
@@ -103,15 +114,18 @@ function App() {
       </nav>
 
       {/* Main content — extra bottom padding on mobile for the tab bar */}
-      <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 sm:pb-8">
+      <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 md:pb-8">
         {activeTab === 'dashboard' && <Dashboard />}
-        {activeTab === 'reservations' && <ReservationManagement />}
+        {activeTab === 'reservations' && <ReservationManagement onCreateReceipt={handleCreateReceipt} />}
         {activeTab === 'expenses' && <ExpenseTracking />}
+        {activeTab === 'receipts' && (
+          <ReceiptManagement initialGuest={receiptGuest} onInitialGuestConsumed={handleReceiptGuestConsumed} />
+        )}
       </main>
 
-      {/* Bottom tab bar — mobile only */}
-      <nav className="sm:hidden fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 z-40">
-        <div className="grid grid-cols-3 h-16">
+      {/* Bottom tab bar — below md (with 4 tabs the top bar no longer fits under 768px) */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 z-40">
+        <div className="grid grid-cols-4 h-16">
           {navigation.map((item) => (
             <button
               key={item.tab}

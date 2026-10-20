@@ -54,7 +54,13 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     ...options.headers,
   };
 
-  const res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+  } catch {
+    // fetch sólo falla así cuando no hay red o el servidor no responde ("Failed to fetch")
+    throw new ApiError('No se pudo conectar con el servidor. Revisá tu conexión e intentá de nuevo.', 0);
+  }
 
   if (!res.ok) {
     let body: Record<string, unknown> = {};
@@ -186,4 +192,52 @@ export const expensesApi = {
     request<Expense>(`/expenses/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id: string) =>
     request<{ message: string }>(`/expenses/${id}`, { method: 'DELETE' }),
+};
+
+// ── Receipts API ───────────────────────────────────────────────────────────
+
+/** Datos del hospedaje que figuran en el recibo */
+export interface ReceiptHolder {
+  holder_name: string;
+  holder_phone: string;
+  holder_address: string;
+}
+
+export interface Receipt extends ReceiptHolder {
+  id: string;
+  /** Número correlativo; se muestra como "N° 0053" */
+  number: number;
+  /** YYYY-MM-DD */
+  receipt_date: string;
+  guest_name: string;
+  amount_ars: number;
+  concept: string;
+  detail: string;
+  /** Reserva de la que se completó el recibo ('' si se cargó a mano) */
+  guest_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ReceiptPayload = Omit<Receipt, 'id' | 'number' | 'created_at' | 'updated_at'> & {
+  /** Si se omite, el servidor asigna el próximo número libre */
+  number?: number;
+};
+
+export interface NextReceiptInfo {
+  /** Próximo número a emitir */
+  number: number;
+  /** Datos del hospedaje del último recibo emitido, para precargar el formulario ('' si no hay) */
+  holder: ReceiptHolder;
+}
+
+export const receiptsApi = {
+  getAll: () => request<Receipt[]>('/receipts'),
+  getNext: () => request<NextReceiptInfo>('/receipts/next'),
+  create: (data: ReceiptPayload) =>
+    request<Receipt>('/receipts', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: ReceiptPayload) =>
+    request<Receipt>(`/receipts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) =>
+    request<{ message: string }>(`/receipts/${id}`, { method: 'DELETE' }),
 };
