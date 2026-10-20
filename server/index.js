@@ -6,6 +6,7 @@ import { ensureInitialized } from './sheets.js';
 import authRoutes from './routes/auth.js';
 import guestsRoutes from './routes/guests.js';
 import expensesRoutes from './routes/expenses.js';
+import receiptsRoutes from './routes/receipts.js';
 
 dotenv.config({ path: new URL('../.env', import.meta.url).pathname });
 
@@ -60,6 +61,7 @@ app.use('/api', async (req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/guests', guestsRoutes);
 app.use('/api/expenses', expensesRoutes);
+app.use('/api/receipts', receiptsRoutes);
 
 // Health check — sin pasar por el middleware de inicialización de Sheets
 app.get('/api/health', (_req, res) => {

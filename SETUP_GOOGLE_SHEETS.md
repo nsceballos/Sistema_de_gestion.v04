@@ -1,6 +1,6 @@
 # Configuración de Google Sheets como Base de Datos
 
-Esta aplicación usa **Google Sheets** como base de datos para almacenar usuarios, reservas y gastos. Sigue estos pasos para configurarla.
+Esta aplicación usa **Google Sheets** como base de datos para almacenar usuarios, reservas, gastos y recibos. Sigue estos pasos para configurarla.
 
 ---
 
@@ -40,7 +40,7 @@ Esta aplicación usa **Google Sheets** como base de datos para almacenar usuario
 3. Asígnale el rol **Editor**
 4. Haz clic en **Enviar**
 
-La aplicación creará automáticamente las hojas necesarias (`Usuarios`, `Huespedes`, `Gastos`, `Reservas`) la primera vez que arranque.
+La aplicación creará automáticamente las hojas necesarias (`Usuarios`, `Huespedes`, `Gastos`, `Reservas` y `Recibos`) la primera vez que arranque.
 
 ---
 
@@ -66,6 +66,9 @@ JWT_SECRET=pegá_acá_el_valor_generado
 
 # Emails que pueden crear una cuenta (además de la primera). Separados por comas.
 ALLOWED_EMAILS=socio@ejemplo.com,otra.persona@ejemplo.com
+
+# Número del primer recibo cuando todavía no hay ninguno cargado (opcional; por defecto 53)
+RECEIPT_START_NUMBER=53
 
 PORT=3001
 FRONTEND_URL=http://localhost:5173
@@ -100,12 +103,22 @@ Si lo cambiás, las sesiones abiertas dejan de valer y hay que volver a iniciar 
 Para sumar a alguien: agregá su email a `ALLOWED_EMAILS`, volvé a desplegar, pedile que se registre
 y después podés sacarlo de la lista.
 
+### `RECEIPT_START_NUMBER` (numeración de recibos)
+
+Es opcional. Define con qué número arranca la numeración de los recibos **mientras la hoja `Recibos`
+todavía está vacía** (por defecto, **53**: el N° 0053). Tiene que ser un número entero mayor o igual a 1;
+si falta o no es válido, se usa 53.
+
+Una vez que hay recibos cargados, el próximo número siempre es **el más alto + 1** (aunque falten
+números intermedios), así que cambiar esta variable después no altera la numeración ya empezada.
+Si necesitás saltar a otro número, cargá un recibo indicando ese número a mano.
+
 ---
 
 ## 6. Variables de entorno en Vercel
 
 En el proyecto de Vercel, andá a **Settings → Environment Variables** y cargá las mismas variables
-(`GOOGLE_SPREADSHEET_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON`, `JWT_SECRET` y, si hace falta, `ALLOWED_EMAILS`).
+(`GOOGLE_SPREADSHEET_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON`, `JWT_SECRET` y, si hace falta, `ALLOWED_EMAILS` y `RECEIPT_START_NUMBER`).
 Después de cambiarlas, volvé a desplegar (**Deployments → Redeploy**) para que se apliquen.
 
 ---
@@ -139,6 +152,7 @@ La aplicación crea y gestiona automáticamente estas hojas:
 | **Huespedes** | Datos completos de cada reserva (fechas, montos, cabaña, etc.) |
 | **Gastos** | Registro de gastos operativos por categoría |
 | **Reservas** | Estado de las reservas vinculadas a huéspedes |
+| **Recibos** | Recibos de reserva emitidos: número correlativo, fecha, huésped, monto, concepto y datos del hospedaje |
 
 ### Columnas nuevas (se agregan solas)
 
@@ -154,6 +168,19 @@ Columnas agregadas en esta versión:
 | **Huespedes** | `source` | Canal de la reserva: `Directo`, `Booking`, `Airbnb` o vacío |
 | **Huespedes** | `exchange_rate` | Pesos por dólar usados al calcular los montos en USD (0 = desconocido, reservas viejas) |
 | **Gastos** | `exchange_rate` | Pesos por dólar usados al calcular el monto en USD |
+
+### Hoja `Recibos`
+
+Se crea **sola** la primera vez que arranca la versión con recibos, también en una planilla que ya
+tiene datos (no hace falta crearla a mano, y las demás hojas no se tocan). Sus columnas son:
+`id`, `number`, `receipt_date`, `guest_name`, `amount_ars`, `concept`, `detail`, `holder_name`,
+`holder_phone`, `holder_address`, `guest_id`, `created_at`, `updated_at`.
+
+- Cada recibo guarda los datos del hospedaje (`holder_*`), así no quedan escritos en el código:
+  al emitir uno nuevo, la app precarga los del último recibo.
+- `number` es el número correlativo (el N° 0053 se guarda como `53`) y no se puede repetir: la app
+  rechaza un recibo con un número que ya existe.
+- Si editás la hoja a mano, no repitas números ni cambies los nombres de las cabeceras.
 
 **Importante:** la app identifica cada columna por el **nombre de su cabecera** (fila 1).
 No cambies el nombre de esas cabeceras ni borres la fila 1.

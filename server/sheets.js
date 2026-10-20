@@ -45,6 +45,7 @@ export const SHEET_NAMES = {
   GUESTS: 'Huespedes',
   EXPENSES: 'Gastos',
   RESERVATIONS: 'Reservas',
+  RECEIPTS: 'Recibos',
 };
 
 // Columnas que necesita la app en cada hoja. Las columnas nuevas van SIEMPRE al final:
@@ -63,6 +64,10 @@ const SHEET_HEADERS = {
     'exchange_rate',
   ],
   [SHEET_NAMES.RESERVATIONS]: ['id', 'guest_id', 'status', 'notification_sent', 'created_at', 'updated_at'],
+  [SHEET_NAMES.RECEIPTS]: [
+    'id', 'number', 'receipt_date', 'guest_name', 'amount_ars', 'concept', 'detail',
+    'holder_name', 'holder_phone', 'holder_address', 'guest_id', 'created_at', 'updated_at',
+  ],
 };
 
 // ── Cliente de Google Sheets (uno por proceso) ──────────────────────────────
