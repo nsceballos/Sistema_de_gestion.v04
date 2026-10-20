@@ -139,6 +139,12 @@ export function toPdfText(text: string): string {
 
 let logoCache: Promise<string> | null = null;
 
+/** PDFs que salieron sin logo porque falló su descarga (no conviene reutilizarlos) */
+const withoutLogo = new WeakSet<Blob>();
+
+/** true si el PDF se generó sin el logo */
+export const pdfMissingLogo = (blob: Blob): boolean => withoutLogo.has(blob);
+
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
   for (let i = 0; i < bytes.length; i += 0x8000) {
@@ -391,5 +397,7 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<Blob> {
   drawHeader(doc, number, logo);
   drawFooter(doc);
   drawBody(doc, data);
-  return doc.output('blob');
+  const blob = doc.output('blob');
+  if (!logo) withoutLogo.add(blob);
+  return blob;
 }

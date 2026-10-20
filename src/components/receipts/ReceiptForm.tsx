@@ -3,6 +3,7 @@ import { useForm, useWatch, type Control } from 'react-hook-form';
 import type { Guest, NextReceiptInfo, Receipt, ReceiptPayload } from '../../lib/api';
 import {
   RECEIPT_CONCEPT_LABELS,
+  RECEIPT_MAX_LENGTH,
   buildConcept,
   buildReservationDetail,
   conceptAmount,
@@ -360,6 +361,7 @@ export default function ReceiptForm({
             <Field id="rec-guestName" label="Huésped" error={errors.guestName?.message}>
               <input
                 id="rec-guestName"
+                maxLength={RECEIPT_MAX_LENGTH.line}
                 type="text"
                 autoComplete="off"
                 {...register('guestName', { validate: (value) => value.trim() !== '' || 'Ingresá el nombre del huésped.' })}
@@ -371,6 +373,7 @@ export default function ReceiptForm({
             <Field id="rec-concept" label="Concepto" error={errors.concept?.message} className="sm:col-span-2">
               <input
                 id="rec-concept"
+                maxLength={RECEIPT_MAX_LENGTH.line}
                 type="text"
                 autoComplete="off"
                 {...register('concept', { validate: (value) => value.trim() !== '' || 'Ingresá el concepto.' })}
@@ -380,7 +383,13 @@ export default function ReceiptForm({
             </Field>
 
             <Field id="rec-detail" label="Detalle de reserva" className="sm:col-span-2">
-              <textarea id="rec-detail" rows={3} {...register('detail')} className={inputClass(false)} />
+              <textarea
+                id="rec-detail"
+                rows={3}
+                maxLength={RECEIPT_MAX_LENGTH.detail}
+                {...register('detail')}
+                className={inputClass(false)}
+              />
             </Field>
           </div>
 
@@ -393,6 +402,7 @@ export default function ReceiptForm({
               <Field id="rec-holderName" label="Titular" className="sm:col-span-2">
                 <input
                   id="rec-holderName"
+                maxLength={RECEIPT_MAX_LENGTH.line}
                   type="text"
                   autoComplete="off"
                   {...register('holderName')}
@@ -402,6 +412,7 @@ export default function ReceiptForm({
               <Field id="rec-holderPhone" label="Teléfono">
                 <input
                   id="rec-holderPhone"
+                maxLength={RECEIPT_MAX_LENGTH.line}
                   type="tel"
                   autoComplete="off"
                   {...register('holderPhone')}
@@ -411,6 +422,7 @@ export default function ReceiptForm({
               <Field id="rec-holderAddress" label="Dirección">
                 <input
                   id="rec-holderAddress"
+                maxLength={RECEIPT_MAX_LENGTH.line}
                   type="text"
                   autoComplete="off"
                   {...register('holderAddress')}

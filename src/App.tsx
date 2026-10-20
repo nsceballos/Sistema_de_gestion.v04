@@ -74,7 +74,7 @@ function App() {
             {/* Logo */}
             <div className="flex items-center">
               <Home className="h-6 w-6 sm:h-8 sm:w-8 text-indigo-600" />
-              <span className="ml-2 text-base sm:text-xl font-bold text-gray-900">Gestión Encantos</span>
+              <span className="ml-2 text-base sm:text-xl font-bold text-gray-900 whitespace-nowrap">Gestión Encantos</span>
             </div>
 
             {/* Desktop navigation */}
@@ -97,13 +97,13 @@ function App() {
 
             {/* Right side */}
             <div className="flex items-center gap-3">
-              <span className="hidden sm:block text-sm text-gray-500 truncate max-w-[180px]">
+              <span className="hidden lg:block text-sm text-gray-500 truncate max-w-[180px]">
                 {session.user.email}
               </span>
               <button
                 onClick={handleSignOut}
                 title="Cerrar sesión"
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium whitespace-nowrap rounded-md text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 transition-colors"
               >
                 <LogOut className="h-4 w-4" />
                 <span className="hidden sm:inline">Cerrar sesión</span>

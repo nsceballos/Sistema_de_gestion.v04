@@ -75,11 +75,17 @@ router.post('/', async (req, res) => {
     // Dos pedidos simultáneos pueden haber tomado el mismo número sin verse entre sí: se vuelve a
     // leer la hoja y el que quedó segundo borra su fila y avisa. Los dos llegan a la misma
     // conclusión porque se queda con el número la primera fila en el orden de la hoja.
-    const afterAppend = await getRows(SHEET_NAMES.RECEIPTS);
-    const owner = findReceiptByNumber(afterAppend, number);
-    if (owner && owner.id !== newReceipt.id) {
-      await deleteRowById(SHEET_NAMES.RECEIPTS, newReceipt.id);
-      return res.status(409).json(buildDuplicateReceiptResponse(number));
+    // Si este control falla (p. ej. un error momentáneo de Google), el recibo ya quedó guardado:
+    // se responde 201 igual, para que no se emita otro recibo por el mismo pago.
+    try {
+      const afterAppend = await getRows(SHEET_NAMES.RECEIPTS);
+      const owner = findReceiptByNumber(afterAppend, number);
+      if (owner && owner.id !== newReceipt.id) {
+        await deleteRowById(SHEET_NAMES.RECEIPTS, newReceipt.id);
+        return res.status(409).json(buildDuplicateReceiptResponse(number));
+      }
+    } catch (checkError) {
+      console.error(`No se pudo verificar el recibo N° ${number} después de guardarlo:`, checkError);
     }
 
     return res.status(201).json(parseReceipt(newReceipt));

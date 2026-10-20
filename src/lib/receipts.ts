@@ -9,6 +9,12 @@ export const RECEIPT_LOGO_URL = '/logo-encantos.png';
 export const RECEIPT_TITLE = 'RECIBO DE RESERVA';
 export const RECEIPT_FOOTER = 'Documento no válido como factura';
 
+/**
+ * Largo máximo de los campos para que el PDF nunca corte texto con "…" (medido con el
+ * generador: entran ~105 caracteres en las cajas de una línea y ~800 en el detalle).
+ */
+export const RECEIPT_MAX_LENGTH = { line: 100, detail: 700 } as const;
+
 /** 53 → "0053" */
 export const formatReceiptNumber = (n: number): string => String(n).padStart(4, '0');
 

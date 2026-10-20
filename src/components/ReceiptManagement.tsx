@@ -10,7 +10,7 @@ import {
   type ReceiptPayload,
 } from '../lib/api';
 import { errorMessage } from '../lib/format';
-import { generateReceiptPdf } from '../lib/receiptPdf';
+import { generateReceiptPdf, pdfMissingLogo } from '../lib/receiptPdf';
 import { receiptFileName } from '../lib/receipts';
 import { downloadBlob, sharePdf, type ShareResult } from '../lib/share';
 import ReceiptForm, { type ReceiptSubmitFailure } from './receipts/ReceiptForm';
@@ -160,7 +160,8 @@ export default function ReceiptManagement({ initialGuest = null, onInitialGuestC
     const cached = cachedPdf(receipt);
     if (cached) return cached;
     const blob = await generateReceiptPdf(receipt);
-    pdfCache.current.set(pdfKey(receipt), blob);
+    // Si falló la descarga del logo no se guarda: el próximo intento lo vuelve a generar con logo
+    if (!pdfMissingLogo(blob)) pdfCache.current.set(pdfKey(receipt), blob);
     return blob;
   };
 
@@ -259,6 +260,8 @@ export default function ReceiptManagement({ initialGuest = null, onInitialGuestC
       void fetchReceipts();
       void prepareResult(saved);
     } catch (err) {
+      // El recibo pudo haberse guardado aunque la respuesta no llegó: la lista muestra el estado real
+      void fetchReceipts();
       if (err instanceof ApiError && err.code === 'DUPLICATE_NUMBER') {
         void refreshNext();
         return { field: 'number', message: err.message };

@@ -27,7 +27,10 @@ export async function sharePdf(blob: Blob, fileName: string, title: string): Pro
       await navigator.share({ files: [file], title });
       return 'shared';
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return 'cancelled';
+      // InvalidStateError: ya hay un menú de compartir abriéndose (doble toque en Android)
+      if (err instanceof DOMException && (err.name === 'AbortError' || err.name === 'InvalidStateError')) {
+        return 'cancelled';
+      }
       if (err instanceof DOMException && err.name === 'NotAllowedError') return 'blocked';
       // Cualquier otro error: se descarga como alternativa
     }
