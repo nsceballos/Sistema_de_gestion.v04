@@ -90,3 +90,41 @@ Las tareas 1, 2 y 3 corren en paralelo, cada agente sobre sus propios archivos. 
 5. **Plantillas de WhatsApp editables**: bienvenida, recordatorio de saldo, pedido de reseña.
 6. **Exportar a Excel/CSV**.
 7. Dividir el bundle (832 kB) en partes más chicas, endurecer CORS (hoy acepta cualquier `*.vercel.app`) y limitar los intentos de login.
+
+## 5. Recibos de reserva (fase 2)
+
+Nueva sección "Recibos" para completar un recibo, obtener su número correlativo
+(**N° 0053** es el próximo) y generar un PDF para compartir por WhatsApp.
+
+### Equipo
+
+| # | Tarea | Agente | Modelo | Por qué ese modelo |
+|---|-------|--------|--------|--------------------|
+| 0 | Contrato: tipos de la API, formato del recibo, función de compartir, logo | Orquestador | Opus | Lo usan los otros tres |
+| 1 | API `/api/receipts`, hoja `Recibos`, numeración correlativa, tests | `backend-recibos` | **Sonnet** | CRUD sobre la infraestructura de planilla que ya existe |
+| 2 | Generador del PDF fiel al diseño (jsPDF, dibujado vectorial) | `pdf-recibo` | **Opus** | Reproducir un diseño con coordenadas exige precisión y verificación visual |
+| 3 | Pantalla de recibos, vista previa, compartir, acceso desde la reserva | `ui-recibos` | **Sonnet** | Interfaz bien especificada |
+| 4 | Revisión final | `reviewer` | **Opus** | Numeración, fechas y compartir en celulares |
+
+### Diseño (tomado del recibo en papel)
+- Encabezado verde `#7e9474` con "RECIBO DE RESERVA" en blanco y negrita, y el logo a la derecha.
+- El número de recibo ("N° 0053") va en el encabezado.
+- Campos con borde punteado: Fecha (`10/2/2026`), Monto (`$100.000`), Huésped, Concepto y Detalle de reserva.
+- "Datos del hospedaje": Titular, Teléfono y Dirección.
+- Pie verde con "Documento no válido como factura".
+- Helpers de formato en `src/lib/receipts.ts`.
+
+### Contrato de la API
+Hoja `Recibos` con las columnas: `id, number, receipt_date, guest_name, amount_ars, concept, detail, holder_name, holder_phone, holder_address, guest_id, created_at, updated_at`.
+
+- `GET /api/receipts` → todos los recibos, del número más alto al más bajo.
+- `GET /api/receipts/next` → `{ number, holder }`.
+  - `number`: el número más alto + 1, o 53 si todavía no hay recibos (configurable con `RECEIPT_START_NUMBER`).
+  - `holder`: los datos del hospedaje del último recibo, para no volver a escribirlos.
+- `POST /api/receipts` → el recibo creado.
+  - Si no viene `number`, se asigna el próximo.
+  - Si viene un número ya usado → `409 { code: 'DUPLICATE_NUMBER' }`.
+  - Datos inválidos → `400`.
+- `PUT /api/receipts/:id` y `DELETE /api/receipts/:id`.
+
+Los datos del titular no quedan en el código: se guardan en la planilla junto con cada recibo.
